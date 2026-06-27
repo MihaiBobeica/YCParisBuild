@@ -10,6 +10,8 @@ def aggregate_pin_color(statuses: list[str], confidence: int, has_partial_price:
         return "green"
     if all(s in BLOCKING for s in statuses if s):
         return "red"
+    if any(s in BLOCKING for s in statuses if s):
+        return "red"
     return "orange"
 
 

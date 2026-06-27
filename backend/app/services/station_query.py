@@ -3,7 +3,7 @@ from typing import Any
 
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_DWithin, ST_Intersects, ST_MakeEnvelope, ST_MakePoint, ST_SetSRID
-from sqlalchemy import cast, or_, select
+from sqlalchemy import cast, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,18 +12,24 @@ from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
 from app.services.confidence import compute_confidence
 from app.services.pin_status import aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
-from app.services.spatial import spread_sample
+from app.services.spatial import select_candidate_ids, select_map_pins
 from app.services.tariff_join import resolve_connector_price
 
 
+def clamp_bbox(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> tuple[float, float, float, float]:
+    """Clip bbox to NL extent; raise if no overlap."""
+    min_lat = max(min_lat, settings.nl_min_lat)
+    max_lat = min(max_lat, settings.nl_max_lat)
+    min_lon = max(min_lon, settings.nl_min_lon)
+    max_lon = min(max_lon, settings.nl_max_lon)
+    if min_lat >= max_lat or min_lon >= max_lon:
+        raise ValueError("Map view does not overlap the Netherlands")
+    return min_lat, min_lon, max_lat, max_lon
+
+
 def validate_bbox(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> None:
-    if (
-        min_lat < settings.nl_min_lat - 0.5
-        or max_lat > settings.nl_max_lat + 0.5
-        or min_lon < settings.nl_min_lon - 0.5
-        or max_lon > settings.nl_max_lon + 0.5
-    ):
-        raise ValueError("Bounding box must be within the Netherlands")
+    """Legacy check — prefer clamp_bbox for API tolerance."""
+    clamp_bbox(min_lat, min_lon, max_lat, max_lon)
 
 
 from app.services.recommendation import haversine_km
@@ -79,9 +85,22 @@ def _station_summary(
     origin_lat: float | None = None,
     origin_lon: float | None = None,
     tariffs_map: dict[str, dict] | None = None,
-) -> dict[str, Any]:
-    statuses = [e.status for e in station.evses]
-    connectors = [c for e in station.evses for c in e.connectors]
+    connector_type: str | None = None,
+) -> dict[str, Any] | None:
+    statuses: list[str] = []
+    connectors: list[Connector] = []
+    for evse in station.evses:
+        evse_connectors = [
+            c for c in evse.connectors if not connector_type or c.standard == connector_type
+        ]
+        if connector_type and not evse_connectors:
+            continue
+        statuses.append(evse.status)
+        connectors.extend(evse_connectors)
+
+    if connector_type and not connectors:
+        return None
+
     prices: list[float] = []
     currency = None
     for c in connectors:
@@ -142,25 +161,79 @@ async def fetch_stations_in_bbox(
     origin_lat: float | None = None,
     origin_lon: float | None = None,
     map_limit: int = MAP_PIN_LIMIT,
+    zoom: int | None = None,
 ) -> list[dict[str, Any]]:
-    validate_bbox(min_lat, min_lon, max_lat, max_lon)
+    min_lat, min_lon, max_lat, max_lon = clamp_bbox(min_lat, min_lon, max_lat, max_lon)
+    if zoom is not None:
+        zoom = int(round(zoom))
     filters = filters or {}
+    connector_type = filters.get("connector_type")
 
     envelope = ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
-    q = (
-        select(Station)
+
+    # ---- Phase 1: lightweight candidate selection over the whole bbox ----
+    # Aggregate availability in SQL; no ORM EVSE/connector objects are built, so
+    # this stays cheap even when the bbox covers all of NL.
+    has_available_expr = func.bool_or(Evse.status == "AVAILABLE")
+    cand_q = (
+        select(
+            Station.id,
+            Station.latitude,
+            Station.longitude,
+            has_available_expr.label("has_available"),
+        )
+        .select_from(Station)
+        .outerjoin(Evse, Evse.station_id == Station.id)
         .where(ST_Intersects(Station.geom, envelope))
-        .options(selectinload(Station.evses).selectinload(Evse.connectors))
+        .group_by(Station.id, Station.latitude, Station.longitude)
     )
 
+    # Cheap filters that don't require building summaries belong in Phase 1 so
+    # the candidate set is already correct before sampling.
+    if connector_type:
+        cand_q = cand_q.where(
+            exists(
+                select(1)
+                .select_from(Connector)
+                .where(Connector.station_id == Station.id, Connector.standard == connector_type)
+            )
+        )
     if filters.get("operator"):
-        q = q.where(Station.operator_name.ilike(f"%{filters['operator']}%"))
+        cand_q = cand_q.where(Station.operator_name.ilike(f"%{filters['operator']}%"))
     if filters.get("access_class"):
-        q = q.where(Station.access_class == filters["access_class"])
+        cand_q = cand_q.where(Station.access_class == filters["access_class"])
     if filters.get("parking_type"):
-        q = q.where(Station.parking_type == filters["parking_type"])
+        cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
+    if filters.get("availability") == "available":
+        cand_q = cand_q.having(has_available_expr.is_(True))
 
-    stations = (await session.scalars(q)).all()
+    cand_rows = (await session.execute(cand_q)).all()
+    if not cand_rows:
+        return []
+
+    candidates = [
+        {
+            "id": r.id,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "has_available": bool(r.has_available),
+        }
+        for r in cand_rows
+    ]
+    chosen_ids = select_candidate_ids(
+        candidates, map_limit, min_lat, min_lon, max_lat, max_lon, zoom
+    )
+    if not chosen_ids:
+        return []
+
+    # ---- Phase 2: full load only for the chosen ids (bounded by map_limit) ----
+    stations = (
+        await session.scalars(
+            select(Station)
+            .where(Station.id.in_(chosen_ids))
+            .options(selectinload(Station.evses).selectinload(Evse.connectors))
+        )
+    ).all()
 
     # Collect tariff keys needed for connectors missing cached prices
     tariff_keys: set[str] = set()
@@ -172,7 +245,11 @@ async def fetch_stations_in_bbox(
                         tariff_keys.add(make_tariff_id(c.country_code, c.party_id, tid))
 
     tariffs_map = await load_tariffs_map(session, tariff_keys) if tariff_keys else {}
-    results = [_station_summary(s, origin_lat, origin_lon, tariffs_map) for s in stations]
+    results: list[dict[str, Any]] = []
+    for s in stations:
+        summary = _station_summary(s, origin_lat, origin_lon, tariffs_map, connector_type)
+        if summary:
+            results.append(summary)
 
     if filters.get("availability") == "available":
         results = [r for r in results if r["pin_color"] == "green"]
@@ -184,13 +261,10 @@ async def fetch_stations_in_bbox(
         results = [r for r in results if r["energy_price"] is not None and r["energy_price"] <= filters["max_price"]]
     if filters.get("min_kw"):
         results = [r for r in results if r["max_power_kw"] and r["max_power_kw"] >= filters["min_kw"]]
-    if filters.get("connector_type"):
-        ct = filters["connector_type"]
-        results = [r for r in results if ct in (r.get("connector_types") or [])]
     if filters.get("min_confidence"):
         results = [r for r in results if r["confidence"] >= filters["min_confidence"]]
 
-    return spread_sample(results, map_limit, min_lat, min_lon, max_lat, max_lon)
+    return select_map_pins(results, map_limit, min_lat, min_lon, max_lat, max_lon, zoom)
 
 
 async def fetch_station_detail(session: AsyncSession, station_id: str) -> dict[str, Any] | None:
@@ -290,16 +364,29 @@ async def fetch_nearby(
     lon: float,
     radius_km: float = 10.0,
     limit: int = 50,
+    connector_type: str | None = None,
 ) -> list[dict[str, Any]]:
     point = cast(ST_SetSRID(ST_MakePoint(lon, lat), 4326), Geography)
     q = (
         select(Station)
         .where(ST_DWithin(cast(Station.geom, Geography), point, radius_km * 1000))
         .options(selectinload(Station.evses).selectinload(Evse.connectors))
-        .limit(limit)
     )
+    if connector_type:
+        q = q.where(
+            exists(
+                select(1)
+                .select_from(Connector)
+                .where(Connector.station_id == Station.id, Connector.standard == connector_type)
+            )
+        )
+    q = q.limit(limit)
     stations = (await session.scalars(q)).all()
-    results = [_station_summary(s, lat, lon) for s in stations]
+    results: list[dict[str, Any]] = []
+    for s in stations:
+        summary = _station_summary(s, lat, lon, connector_type=connector_type)
+        if summary:
+            results.append(summary)
     return sorted(results, key=lambda x: x.get("distance_km", 999))
 
 

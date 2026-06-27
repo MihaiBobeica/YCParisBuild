@@ -1,6 +1,14 @@
+import { useState } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
-import { BboxWatcher, MapController } from './MapController';
+import {
+  BboxWatcher,
+  MapInteractionSetup,
+  MapNavigator,
+  MapZoomControls,
+  type MapNavTarget,
+} from './MapController';
 import { ChargerMarkers } from './ChargerMarkers';
+import { SearchDestinationPin, type SearchDestination } from './SearchDestinationPin';
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -10,14 +18,15 @@ import {
   TILE_URL,
 } from './mapConfig';
 import type { StationPin } from '../../api/client';
+import type { BboxPayload } from '../../hooks/useMapStations';
 
 interface Props {
   stations: StationPin[];
   selectedId: string | null;
   onSelect: (station: StationPin) => void;
-  onBboxChange: (bbox: { min_lat: number; min_lon: number; max_lat: number; max_lon: number }) => void;
-  center?: [number, number];
-  zoom?: number;
+  onBboxChange: (bbox: BboxPayload) => void;
+  navTarget?: MapNavTarget | null;
+  searchDestination?: SearchDestination | null;
 }
 
 export function ChargerMap({
@@ -25,24 +34,47 @@ export function ChargerMap({
   selectedId,
   onSelect,
   onBboxChange,
-  center = NL_CENTER as [number, number],
-  zoom = 8,
+  navTarget = null,
+  searchDestination = null,
 }: Props) {
+  const [liveZoom, setLiveZoom] = useState(8);
+
   return (
     <MapContainer
-      center={center}
-      zoom={zoom}
+      center={NL_CENTER as [number, number]}
+      zoom={8}
       minZoom={MIN_ZOOM}
       maxZoom={MAX_ZOOM}
       maxBounds={NL_BOUNDS}
-      maxBoundsViscosity={1.0}
+      maxBoundsViscosity={0.6}
       style={{ width: '100%', height: '100%' }}
       zoomControl={false}
+      scrollWheelZoom
+      preferCanvas
+      zoomSnap={0.5}
+      zoomDelta={0.5}
     >
-      <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
-      <MapController center={center} zoom={zoom} />
-      <BboxWatcher onChange={onBboxChange} />
-      <ChargerMarkers stations={stations} selectedId={selectedId} onSelect={onSelect} />
+      <TileLayer
+        url={TILE_URL}
+        attribution={TILE_ATTRIBUTION}
+        keepBuffer={4}
+        updateWhenZooming
+        className="map-tiles"
+      />
+      <MapInteractionSetup />
+      <MapNavigator target={navTarget} />
+      <BboxWatcher
+        onChange={onBboxChange}
+        onZoomChange={setLiveZoom}
+      />
+      <MapZoomControls />
+      <ChargerMarkers
+        stations={stations}
+        selectedId={selectedId}
+        zoom={liveZoom}
+        onSelect={onSelect}
+      />
+      <SearchDestinationPin destination={searchDestination} />
     </MapContainer>
   );
 }

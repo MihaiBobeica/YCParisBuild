@@ -50,12 +50,15 @@ async def list_stations(
     known_price_only: bool = False,
     min_confidence: int | None = None,
     map_limit: int = Query(250, ge=1, le=500),
+    zoom: float | None = Query(None, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
 ):
+    zoom_int = int(round(zoom)) if zoom is not None else None
     cache_key = hashlib.md5(
-        f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{map_limit}".encode()
+        f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{connector_type}:"
+        f"{min_kw}:{operator}:{known_price_only}:{min_confidence}:{map_limit}:{zoom_int}".encode()
     ).hexdigest()
-    cached = await cache_get(f"map:bbox:{cache_key}")
+    cached = await cache_get(f"map:bbox:v3:{cache_key}")
     if cached:
         return cached
 
@@ -72,12 +75,12 @@ async def list_stations(
     }
     try:
         results = await fetch_stations_in_bbox(
-            db, min_lat, min_lon, max_lat, max_lon, filters, origin_lat, origin_lon, map_limit
+            db, min_lat, min_lon, max_lat, max_lon, filters, origin_lat, origin_lon, map_limit, zoom_int
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    await cache_set(f"map:bbox:{cache_key}", results, 180)
+    await cache_set(f"map:bbox:v3:{cache_key}", results, 180)
     return results
 
 
@@ -127,13 +130,21 @@ async def search_near(
 
 @router.post("/recommendations")
 async def recommendations(body: RecommendationRequest, db: AsyncSession = Depends(get_db)):
-    stations = await fetch_nearby(db, body.origin_lat, body.origin_lon, body.radius_km, limit=100)
+    connector_type = body.connector_type or (body.filters or {}).get("connector_type")
+    stations = await fetch_nearby(
+        db,
+        body.origin_lat,
+        body.origin_lon,
+        body.radius_km,
+        limit=100,
+        connector_type=connector_type,
+    )
     cards = build_recommendations(
         stations,
         body.origin_lat,
         body.origin_lon,
         body.radius_km,
-        body.connector_type,
+        connector_type,
     )
     return cards
 

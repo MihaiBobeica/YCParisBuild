@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import create_engine, delete, select, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker, selectinload
 
 from app.config import settings
 from app.models import (
@@ -18,7 +18,7 @@ from app.models import (
     TariffPriceComponent,
     TariffRestriction,
 )
-from app.services.ndw_parser import parse_location, parse_tariff
+from app.services.ndw_parser import parse_location, parse_tariff, make_tariff_id
 from app.services.tariff_join import resolve_connector_price
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,15 @@ def _download_gzip(url: str) -> bytes:
         return resp.content
 
 
-def _load_tariffs_map(session: Session) -> dict[str, dict]:
+def _load_tariffs_map(session: Session, keys: set[str] | None = None) -> dict[str, dict]:
     tariffs: dict[str, dict] = {}
-    for t in session.scalars(select(Tariff)).all():
+    q = select(Tariff).options(
+        selectinload(Tariff.price_components),
+        selectinload(Tariff.restrictions),
+    )
+    if keys:
+        q = q.where(Tariff.id.in_(keys))
+    for t in session.scalars(q).all():
         components = [
             {"type": c.type, "price": c.price, "vat": c.vat, "step_size": c.step_size}
             for c in t.price_components
@@ -283,11 +289,6 @@ def backfill_connector_prices() -> int:
     logger.info("Backfilling connector prices")
     updated = 0
     with SyncSession() as session:
-        tariffs_map = _load_tariffs_map(session)
-        if not tariffs_map:
-            logger.warning("No tariffs loaded; skipping price backfill")
-            return 0
-
         last_id = ""
         while True:
             q = select(Connector).order_by(Connector.id).limit(2000)
@@ -296,6 +297,15 @@ def backfill_connector_prices() -> int:
             batch = session.scalars(q).all()
             if not batch:
                 break
+
+            tariff_keys: set[str] = set()
+            for conn in batch:
+                if conn.tariff_ids:
+                    for tid in conn.tariff_ids:
+                        tariff_keys.add(make_tariff_id(conn.country_code, conn.party_id, tid))
+
+            tariffs_map = _load_tariffs_map(session, tariff_keys) if tariff_keys else {}
+
             for conn in batch:
                 conn_data = {
                     "tariff_ids": conn.tariff_ids or [],

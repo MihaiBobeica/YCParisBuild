@@ -1,7 +1,5 @@
 import type { Filters } from '../../api/client';
 
-const PLUGS = ['IEC_62196_T2', 'IEC_62196_T2_COMBO', 'CHADEMO', 'TESLA'];
-
 interface Props {
   filters: Filters;
   onChange: (filters: Filters) => void;
@@ -54,10 +52,10 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         </button>
       </div>
 
-      <PlugsPicker
-        selected={filters.connector_type}
-        onSelect={(connector_type) => onChange({ ...filters, connector_type })}
-      />
+      <p style={{ fontWeight: 600, marginBottom: 8 }}>Connector type</p>
+      <p className="field-hint" style={{ marginBottom: 20 }}>
+        Set your car&apos;s plug in Account — the map only shows compatible chargers.
+      </p>
 
       <p style={{ fontWeight: 600, marginTop: 20, marginBottom: 8 }}>Availability</p>
       <div className="segmented" style={{ marginBottom: 20 }}>
@@ -97,39 +95,5 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         }}
       />
     </div>
-  );
-}
-
-function PlugsPicker({ selected, onSelect }: { selected?: string; onSelect: (v: string | undefined) => void }) {
-  const labels: Record<string, string> = {
-    IEC_62196_T2: 'Type 2',
-    IEC_62196_T2_COMBO: 'CCS',
-    CHADEMO: 'CHAdeMO',
-    TESLA: 'NACS',
-  };
-
-  return (
-    <>
-      <p style={{ fontWeight: 600, marginBottom: 8 }}>Plugs</p>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
-        {PLUGS.map((plug) => (
-          <button
-            key={plug}
-            onClick={() => onSelect(selected === plug ? undefined : plug)}
-            style={{
-              minWidth: 80,
-              padding: '16px 12px',
-              borderRadius: 16,
-              border: selected === plug ? '3px solid #000' : '1px solid #ddd',
-              background: 'white',
-              fontWeight: 600,
-              fontSize: 13,
-            }}
-          >
-            {labels[plug] || plug}
-          </button>
-        ))}
-      </div>
-    </>
   );
 }

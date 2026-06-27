@@ -7,7 +7,7 @@ export const NL_BOUNDS: L.LatLngBoundsExpression = [
 
 export const NL_CENTER: L.LatLngExpression = [52.1326, 5.2913];
 
-export const TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+export const TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
 
 export const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';

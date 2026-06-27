@@ -159,3 +159,45 @@ def test_recommendations():
     types = {r["type"] for r in recs}
     assert "best_overall" in types
     assert types & {"cheapest", "fastest"}
+
+
+def test_select_map_pins_respects_limit():
+    from app.services.spatial import select_map_pins
+
+    stations = [
+        {"id": f"s{i}", "latitude": 52.0 + (i % 20) * 0.01, "longitude": 4.0 + (i // 20) * 0.01, "pin_color": "green", "confidence": 50}
+        for i in range(200)
+    ]
+    picked = select_map_pins(stations, 40, 52.0, 4.0, 52.2, 4.2, zoom=11)
+    assert len(picked) == 40
+    assert len({s["id"] for s in picked}) == 40
+
+
+def test_select_map_pins_stable_across_bbox_shift():
+    from app.services.spatial import select_map_pins
+
+    stations = [
+        {
+            "id": f"s{i}",
+            "latitude": 51.9 + (i % 30) * 0.008,
+            "longitude": 4.4 + (i // 30) * 0.008,
+            "pin_color": "green" if i % 3 == 0 else "red",
+            "confidence": 50 + (i % 20),
+        }
+        for i in range(300)
+    ]
+    bbox_a = select_map_pins(stations, 50, 51.9, 4.4, 52.15, 4.65, zoom=12)
+    bbox_b = select_map_pins(stations, 50, 51.92, 4.42, 52.17, 4.67, zoom=12)
+    ids_a = {s["id"] for s in bbox_a}
+    ids_b = {s["id"] for s in bbox_b}
+    overlap = len(ids_a & ids_b)
+    assert overlap >= len(ids_a) * 0.65
+
+
+def test_map_limit_for_zoom():
+    from app.services.spatial import map_limit_for_zoom
+
+    assert map_limit_for_zoom(8) == 45
+    assert map_limit_for_zoom(13) == 140
+    assert map_limit_for_zoom(16) == 180
+
