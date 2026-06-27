@@ -1,0 +1,327 @@
+import gzip
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+
+import httpx
+from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.config import settings
+from app.models import (
+    Connector,
+    Evse,
+    Station,
+    StatusDiff,
+    SyncRun,
+    Tariff,
+    TariffPriceComponent,
+    TariffRestriction,
+)
+from app.services.ndw_parser import parse_location, parse_tariff
+from app.services.tariff_join import resolve_connector_price
+
+logger = logging.getLogger(__name__)
+
+sync_engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
+SyncSession = sessionmaker(sync_engine)
+
+
+def _download_gzip(url: str) -> bytes:
+    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
+        resp = client.get(url)
+        resp.raise_for_status()
+        return resp.content
+
+
+def _load_tariffs_map(session: Session) -> dict[str, dict]:
+    tariffs: dict[str, dict] = {}
+    for t in session.scalars(select(Tariff)).all():
+        components = [
+            {"type": c.type, "price": c.price, "vat": c.vat, "step_size": c.step_size}
+            for c in t.price_components
+        ]
+        restrictions = [
+            {
+                "start_time": r.start_time,
+                "end_time": r.end_time,
+                "day_of_week": r.day_of_week,
+                "min_duration": r.min_duration,
+                "max_duration": r.max_duration,
+            }
+            for r in t.restrictions
+        ]
+        tariffs[t.id] = {
+            "currency": t.currency,
+            "price_components": components,
+            "restrictions": restrictions,
+        }
+    return tariffs
+
+
+def _record_diff(session: Session, evse_id: str, field: str, old: str | None, new: str | None) -> None:
+    if old == new:
+        return
+    session.add(StatusDiff(evse_id=evse_id, field=field, old_value=old, new_value=new))
+
+
+def _iter_json_items(decompressed: bytes, keys: tuple[str, ...] = ("data", "items")) -> list:
+    """Parse OCPI JSON which may be a root array or wrapped object."""
+    data = json.loads(decompressed)
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in keys:
+            if key in data and isinstance(data[key], list):
+                return data[key]
+        # Some exports nest under a single key
+        for val in data.values():
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                return val
+    return []
+
+
+def sync_locations() -> int:
+    logger.info("Starting locations sync")
+    count = 0
+    try:
+        raw = _download_gzip(settings.ndw_locations_url)
+        decompressed = gzip.decompress(raw)
+        tariffs_map: dict[str, dict] = {}
+
+        with SyncSession() as session:
+            tariffs_map = _load_tariffs_map(session)
+            items = _iter_json_items(decompressed)
+
+            batch: list[dict] = []
+            for raw_loc in items:
+                if isinstance(raw_loc, dict):
+                    parsed = parse_location(raw_loc)
+                    if parsed:
+                        batch.append(parsed)
+                if len(batch) >= 200:
+                    count += _upsert_locations_batch(session, batch, tariffs_map)
+                    batch = []
+            if batch:
+                count += _upsert_locations_batch(session, batch, tariffs_map)
+
+            run = session.scalar(select(SyncRun).where(SyncRun.dataset == "locations"))
+            if not run:
+                run = SyncRun(dataset="locations")
+                session.add(run)
+            run.last_success_at = datetime.now(timezone.utc)
+            run.records_processed = count
+            run.error_message = None
+            session.commit()
+        logger.info("Locations sync complete: %d stations", count)
+        return count
+    except Exception as e:
+        logger.exception("Locations sync failed")
+        with SyncSession() as session:
+            run = session.scalar(select(SyncRun).where(SyncRun.dataset == "locations"))
+            if not run:
+                run = SyncRun(dataset="locations")
+                session.add(run)
+            run.error_message = str(e)
+            session.commit()
+        raise
+
+
+def _upsert_locations_batch(
+    session: Session, locations: list[dict], tariffs_map: dict[str, dict]
+) -> int:
+    count = 0
+    for loc in locations:
+        station = session.get(Station, loc["id"])
+        if not station:
+            station = Station(id=loc["id"])
+            session.add(station)
+
+        station.country_code = loc["country_code"]
+        station.party_id = loc["party_id"]
+        station.location_id = loc["location_id"]
+        station.name = loc["name"]
+        station.address = loc["address"]
+        station.city = loc["city"]
+        station.latitude = loc["latitude"]
+        station.longitude = loc["longitude"]
+        station.geom = f"SRID=4326;POINT({loc['longitude']} {loc['latitude']})"
+        station.operator_name = loc["operator_name"]
+        station.owner_name = loc["owner_name"]
+        station.parking_type = loc["parking_type"]
+        station.facilities = loc["facilities"]
+        station.publish = loc["publish"]
+        station.access_class = loc["access_class"]
+        station.last_updated = loc["last_updated"]
+        station.fetched_at = datetime.now(timezone.utc)
+
+        existing_evse_ids = {e.id for e in session.scalars(
+            select(Evse).where(Evse.station_id == loc["id"])
+        ).all()}
+
+        for evse_data in loc.get("evses") or []:
+            evse = session.get(Evse, evse_data["id"])
+            old_status = evse.status if evse else None
+            if not evse:
+                evse = Evse(id=evse_data["id"], station_id=loc["id"])
+                session.add(evse)
+            evse.evse_uid = evse_data["evse_uid"]
+            evse.status = evse_data["status"]
+            evse.last_updated = evse_data["last_updated"]
+            _record_diff(session, evse_data["id"], "status", old_status, evse_data["status"])
+            existing_evse_ids.discard(evse_data["id"])
+
+            for conn_data in evse_data.get("connectors") or []:
+                conn = session.get(Connector, conn_data["id"])
+                old_price = str(conn.resolved_energy_price) if conn and conn.resolved_energy_price else None
+                if not conn:
+                    conn = Connector(
+                        id=conn_data["id"],
+                        evse_id=evse_data["id"],
+                        station_id=loc["id"],
+                    )
+                    session.add(conn)
+                conn.connector_id = conn_data["connector_id"]
+                conn.standard = conn_data["standard"]
+                conn.max_power_kw = conn_data["max_power_kw"]
+                conn.tariff_ids = conn_data["tariff_ids"]
+                conn.country_code = conn_data["country_code"]
+                conn.party_id = conn_data["party_id"]
+
+                price, currency, _ = resolve_connector_price(conn_data, tariffs_map)
+                conn.resolved_energy_price = price
+                conn.resolved_currency = currency
+                new_price = str(price) if price is not None else None
+                _record_diff(session, evse_data["id"], "energy_price", old_price, new_price)
+
+        count += 1
+    session.flush()
+    return count
+
+
+def sync_tariffs() -> int:
+    logger.info("Starting tariffs sync")
+    count = 0
+    try:
+        raw = _download_gzip(settings.ndw_tariffs_url)
+        decompressed = gzip.decompress(raw)
+
+        with SyncSession() as session:
+            items = _iter_json_items(decompressed, keys=("data", "tariffs", "items"))
+
+            for raw_tariff in items:
+                if not isinstance(raw_tariff, dict):
+                    continue
+                parsed = parse_tariff(raw_tariff)
+                if not parsed:
+                    continue
+
+                tariff = session.get(Tariff, parsed["id"])
+                if not tariff:
+                    tariff = Tariff(id=parsed["id"])
+                    session.add(tariff)
+                tariff.country_code = parsed["country_code"]
+                tariff.party_id = parsed["party_id"]
+                tariff.tariff_id = parsed["tariff_id"]
+                tariff.currency = parsed["currency"]
+                tariff.last_updated = parsed["last_updated"]
+
+                session.execute(
+                    delete(TariffPriceComponent).where(TariffPriceComponent.tariff_id == parsed["id"])
+                )
+                session.execute(
+                    delete(TariffRestriction).where(TariffRestriction.tariff_id == parsed["id"])
+                )
+                for pc in parsed["price_components"]:
+                    session.add(TariffPriceComponent(
+                        tariff_id=parsed["id"],
+                        type=pc["type"],
+                        price=pc["price"],
+                        vat=pc.get("vat"),
+                        step_size=pc.get("step_size"),
+                    ))
+                for r in parsed["restrictions"]:
+                    session.add(TariffRestriction(
+                        tariff_id=parsed["id"],
+                        start_time=r.get("start_time"),
+                        end_time=r.get("end_time"),
+                        day_of_week=r.get("day_of_week"),
+                        min_duration=r.get("min_duration"),
+                        max_duration=r.get("max_duration"),
+                    ))
+                count += 1
+                if count % 2000 == 0:
+                    session.commit()
+                    logger.info("Tariffs sync progress: %d", count)
+
+            run = session.scalar(select(SyncRun).where(SyncRun.dataset == "tariffs"))
+            if not run:
+                run = SyncRun(dataset="tariffs")
+                session.add(run)
+            run.last_success_at = datetime.now(timezone.utc)
+            run.records_processed = count
+            run.error_message = None
+            session.commit()
+
+        logger.info("Tariffs sync complete: %d tariffs", count)
+        backfill_connector_prices()
+        return count
+    except Exception as e:
+        logger.exception("Tariffs sync failed")
+        with SyncSession() as session:
+            run = session.scalar(select(SyncRun).where(SyncRun.dataset == "tariffs"))
+            if not run:
+                run = SyncRun(dataset="tariffs")
+                session.add(run)
+            run.error_message = str(e)
+            session.commit()
+        raise
+
+
+def backfill_connector_prices() -> int:
+    """Resolve and cache energy prices on all connectors from synced tariffs."""
+    logger.info("Backfilling connector prices")
+    updated = 0
+    with SyncSession() as session:
+        tariffs_map = _load_tariffs_map(session)
+        if not tariffs_map:
+            logger.warning("No tariffs loaded; skipping price backfill")
+            return 0
+
+        last_id = ""
+        while True:
+            q = select(Connector).order_by(Connector.id).limit(2000)
+            if last_id:
+                q = q.where(Connector.id > last_id)
+            batch = session.scalars(q).all()
+            if not batch:
+                break
+            for conn in batch:
+                conn_data = {
+                    "tariff_ids": conn.tariff_ids or [],
+                    "country_code": conn.country_code,
+                    "party_id": conn.party_id,
+                }
+                price, currency, _ = resolve_connector_price(conn_data, tariffs_map)
+                if price is not None:
+                    if conn.resolved_energy_price != price or conn.resolved_currency != currency:
+                        conn.resolved_energy_price = price
+                        conn.resolved_currency = currency
+                        updated += 1
+            session.commit()
+            last_id = batch[-1].id
+            logger.info("Price backfill progress: last_id=%s updated=%d", last_id, updated)
+
+    logger.info("Connector price backfill complete: %d updated", updated)
+    return updated
+
+
+def purge_old_diffs() -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.diff_retention_days)
+    with SyncSession() as session:
+        result = session.execute(
+            text("DELETE FROM status_diffs WHERE changed_at < :cutoff"),
+            {"cutoff": cutoff},
+        )
+        session.commit()
+        return result.rowcount or 0
