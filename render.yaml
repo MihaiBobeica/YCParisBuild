@@ -4,21 +4,21 @@
 
 databases:
   - name: paxor-db
-    plan: free
+    plan: basic-256mb
     postgresMajorVersion: "16"
 
 services:
   # Redis (Render Key Value) for the bbox/station response cache.
   - type: keyvalue
     name: paxor-redis
-    plan: free
+    plan: starter
     ipAllowList: []
 
   # FastAPI backend (Docker). PostGIS extension is created by Alembic env.py.
   - type: web
     name: paxor-backend
     runtime: docker
-    plan: free
+    plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /api/health
