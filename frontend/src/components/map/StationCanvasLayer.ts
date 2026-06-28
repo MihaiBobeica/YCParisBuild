@@ -58,7 +58,6 @@ export class StationCanvasLayer extends L.Layer {
   private _refs: LayerRefs = { stations: [], selectedId: null, onSelect: () => {} };
   private _grid: StationGrid = buildStationGrid([]);
   private _visible: GridStation[] = [];
-  private _renderedIds: Set<string> = new Set();
   private _placed: PlacedPin[] = [];
   private _min: L.Point = L.point(0, 0);
   private _max: L.Point = L.point(0, 0);
@@ -196,9 +195,8 @@ export class StationCanvasLayer extends L.Layer {
     const base = queryView(this._grid, { south, west, north, east }, this._zoom, 0);
 
     // Dedupe by id (queryView can emit a station twice when the viewport spans
-    // beyond the grid extent) and persist pins we already painted that remain
-    // inside the viewport, so a zoom/pan never declutters away bubbles the user
-    // can still see.
+    // beyond the grid extent). Each repaint takes the current decluttered set —
+    // pins are allowed to thin out at random on zoom-out (color-agnostic).
     const seen = new Set<string>();
     const visible: GridStation[] = [];
     for (const gs of base) {
@@ -208,22 +206,7 @@ export class StationCanvasLayer extends L.Layer {
       visible.push(gs);
     }
 
-    if (visible.length < MAX_VISIBLE && this._renderedIds.size > 0) {
-      for (const id of this._renderedIds) {
-        if (visible.length >= MAX_VISIBLE) break;
-        if (seen.has(id)) continue;
-        const gs = this._grid.byId.get(id);
-        if (!gs) continue;
-        const { latitude: lat, longitude: lon } = gs.s;
-        if (lat >= south && lat <= north && lon >= west && lon <= east) {
-          seen.add(id);
-          visible.push(gs);
-        }
-      }
-    }
-
     this._visible = visible;
-    this._renderedIds = seen;
   }
 
   private _paint() {
@@ -243,7 +226,7 @@ export class StationCanvasLayer extends L.Layer {
     this._placed = [];
     let selected: PlacedPin | null = null;
 
-    // Draw lowest priority first so available (green) pins sit on top.
+    // Paint in reverse render order; selection is drawn last on top.
     for (let i = this._visible.length - 1; i >= 0; i--) {
       const gs = this._visible[i];
       const lp = map.latLngToLayerPoint([gs.s.latitude, gs.s.longitude]);

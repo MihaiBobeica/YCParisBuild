@@ -25,7 +25,7 @@ import type { SearchDestination } from '../components/map/SearchDestinationPin';
 import { RecommendationCards } from '../components/recommendations/RecommendationCards';
 import { useAvailabilityMonitor, useGeolocation } from '../hooks/useGeolocation';
 import { useMapStations } from '../hooks/useMapStations';
-import { useUserProfile, CONNECTOR_OPTIONS } from '../hooks/useUserProfile';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { isInNL } from '../utils/nlBounds';
 
 export function MapPage() {

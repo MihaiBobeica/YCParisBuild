@@ -53,6 +53,9 @@ body {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
+  /* Overlap tiles by 1px to hide sub-pixel white seams (worse with fractional zoomSnap). */
+  width: 257px !important;
+  height: 257px !important;
 }
 
 .leaflet-tile-container img.leaflet-tile {
@@ -705,16 +708,6 @@ input {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.dock-connector-tag {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--paxor-text-muted);
-  white-space: nowrap;
-  padding: 8px 10px;
-  background: var(--paxor-bg-muted);
-  border-radius: var(--paxor-radius-pill);
 }
 
 .dock-pill {

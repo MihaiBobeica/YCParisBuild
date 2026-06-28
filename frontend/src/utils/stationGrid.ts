@@ -13,13 +13,6 @@ export function resolvePinKind(s: StationPin): PinKind {
   return 'orange';
 }
 
-/** Higher = drawn first / wins decluttering. Green (available) always wins. */
-function pinPriority(kind: PinKind): number {
-  if (kind === 'green') return 3;
-  if (kind === 'red') return 2;
-  return 1;
-}
-
 function availabilityCapacity(label: string | undefined): string | null {
   if (!label) return null;
   const m = label.match(/\((\d+\/\d+)\)/);
@@ -39,7 +32,6 @@ function buildChip(s: StationPin): { line1: string; line2: string } {
 export interface GridStation {
   readonly s: StationPin;
   readonly kind: PinKind;
-  readonly priority: number;
   readonly power: number;
   readonly price: number;
   readonly chip: { line1: string; line2: string };
@@ -90,7 +82,6 @@ export function buildStationGrid(stations: StationPin[]): StationGrid {
     const gs: GridStation = {
       s,
       kind,
-      priority: pinPriority(kind),
       power: s.max_power_kw ?? 0,
       price: s.energy_price ?? Number.POSITIVE_INFINITY,
       chip: buildChip(s),
@@ -105,20 +96,24 @@ export function buildStationGrid(stations: StationPin[]): StationGrid {
   return { cells, byId, cols, minCol: safeMinCol, minRow: safeMinRow, size: stations.length };
 }
 
-/** Rank: available (green) first, then by power, then cheaper price. */
+/**
+ * Color-agnostic rank: decluttering no longer favors available (green) pins, so
+ * survivors thin out independent of color. Stable order: power, then cheaper
+ * price, then id tie-break.
+ */
 function compareForRender(a: GridStation, b: GridStation): number {
-  if (a.priority !== b.priority) return b.priority - a.priority;
   if (a.power !== b.power) return b.power - a.power;
-  return a.price - b.price;
+  if (a.price !== b.price) return a.price - b.price;
+  return a.s.id < b.s.id ? -1 : a.s.id > b.s.id ? 1 : 0;
 }
 
 /**
  * Return the stations to draw for the current viewport.
  *
  * Only touches grid cells overlapping the padded viewport (O(visible)), then
- * declutters with a priority-aware spatial spread: the viewport is divided into
- * a sub-grid and the highest-priority station claims each sub-cell, so dense
- * areas stay clean and available chargers always survive the cap.
+ * declutters with a color-agnostic spatial spread: the viewport is divided into
+ * a sub-grid and one station (by power/price, not color) claims each sub-cell,
+ * so dense areas stay clean and pins thin out regardless of availability.
  */
 export function queryView(
   grid: StationGrid,
@@ -156,7 +151,7 @@ export function queryView(
 
   candidates.sort(compareForRender);
 
-  // Spatial spread: keep one (highest-priority) pin per viewport sub-cell.
+  // Spatial spread: keep one pin per viewport sub-cell (color-agnostic order).
   const n = Math.max(1, Math.ceil(Math.sqrt(cap * 1.6)));
   const spanLat = pad.north - pad.south || 1e-9;
   const spanLon = pad.east - pad.west || 1e-9;
