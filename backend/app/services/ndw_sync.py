@@ -377,12 +377,7 @@ def backfill_connector_prices() -> int:
     return updated
 
 
-def _chunked(items: list, size: int):
-    for i in range(0, len(items), size):
-        yield items[i : i + size]
-
-
-def refresh_station_pins(batch_size: int = 500) -> int:
+def refresh_station_pins(batch_size: int = 300) -> int:
     """Recompute the denormalized map-pin summary on every station.
 
     Reuses `_station_summary` so the price/power/color/label logic is identical
@@ -390,20 +385,29 @@ def refresh_station_pins(batch_size: int = 500) -> int:
     per-connector-type values so the map endpoint can serve connector-filtered
     views without aggregating at request time. Runs at sync cadence (the same
     work previously done per request, now amortized once per sync).
+
+    Memory-bounded for the 2GB production box: stations are walked with keyset
+    pagination (no full id list materialized) and the ORM identity map is
+    expunged after every committed batch, so peak RAM is ~one batch of hydrated
+    Station -> Evse -> Connector graphs regardless of total station count.
     """
     from app.services.station_query import _station_summary
 
     logger.info("Refreshing station pin summaries")
     updated = 0
     with SyncSession() as session:
-        ids = list(session.scalars(select(Station.id)).all())
-        for chunk in _chunked(ids, batch_size):
-            stations = session.scalars(
+        last_id = ""
+        while True:
+            batch = session.scalars(
                 select(Station)
-                .where(Station.id.in_(chunk))
+                .where(Station.id > last_id)
+                .order_by(Station.id)
+                .limit(batch_size)
                 .options(selectinload(Station.evses).selectinload(Evse.connectors))
             ).all()
-            for s in stations:
+            if not batch:
+                break
+            for s in batch:
                 overall = _station_summary(s, tariffs_map={}) or {}
                 by_std: dict[str, dict] = {}
                 standards = {c.standard for e in s.evses for c in e.connectors if c.standard}
@@ -425,7 +429,10 @@ def refresh_station_pins(batch_size: int = 500) -> int:
                 s.pin_standards = overall.get("connector_types") or []
                 s.pin_by_standard = by_std
                 updated += 1
+            last_id = batch[-1].id
             session.commit()
+            # Release the hydrated graphs for this batch so memory stays flat.
+            session.expunge_all()
     logger.info("Refreshed pin summaries for %d stations", updated)
     return updated
 

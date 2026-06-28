@@ -353,20 +353,18 @@ async def fetch_stations_in_bbox(
     grid_lon = func.floor(Station.longitude / cell)
 
     # One representative per grid cell, picking the max id (matches the
-    # color-agnostic id tie-break of the previous Python/SQL selection).
+    # color-agnostic id tie-break of the previous Python/SQL selection). Only the
+    # fields the frontend `StationPin` actually renders are selected; address/
+    # city/owner/parking_type/facilities/access_class are intentionally omitted
+    # (the detail sheet fetches those per-station) to keep the payload — and the
+    # per-request serialization memory on the 1-CPU / 2GB box — small.
     inner = (
         select(
             Station.id,
             Station.name,
-            Station.address,
-            Station.city,
             Station.latitude,
             Station.longitude,
             Station.operator_name,
-            Station.owner_name,
-            Station.parking_type,
-            Station.facilities,
-            Station.access_class,
             price.label("energy_price"),
             currency.label("currency"),
             max_power.label("max_power_kw"),
@@ -410,15 +408,9 @@ async def fetch_stations_in_bbox(
         summary: dict[str, Any] = {
             "id": r["id"],
             "name": r["name"],
-            "address": r["address"],
-            "city": r["city"],
             "latitude": r["latitude"],
             "longitude": r["longitude"],
             "operator": r["operator_name"],
-            "owner": r["owner_name"],
-            "parking_type": r["parking_type"],
-            "facilities": r["facilities"] or [],
-            "access_class": r["access_class"],
             "availability_label": r["availability_label"],
             "energy_price": r["energy_price"],
             "currency": r["currency"],
