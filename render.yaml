@@ -41,7 +41,7 @@ services:
       # Public URL — `property: host` is the private-network hostname and is not
       # valid for CORS origins or browser redirects.
       - key: FRONTEND_URL
-        value: https://paxor-frontend.onrender.com
+        value: https://paxor.ai
       - key: APP_NAME
         value: paxor
       - key: TZ
