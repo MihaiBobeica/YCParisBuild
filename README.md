@@ -30,22 +30,15 @@ docker compose exec backend python scripts/seed_sample_data.py
 # backend
 cd backend && pip install -r requirements.txt
 alembic upgrade head && uvicorn app.main:app --reload
+pytest
 
 # frontend
 cd frontend && npm install && npm run dev
 ```
 
-Run tests with `cd backend && pytest`.
-
 ## API
 
-- `GET /api/health` — health check
-- `GET /api/stations` · `GET /api/stations/{id}` — bbox query + filters / detail
-- `GET /api/search` — text + geocode search
-- `POST /api/recommendations` — 2–3 recommended chargers
-- `GET /api/partner-sites` · `GET /api/partner-sites/{id}/availability` — discounted sites + capacity
-- `POST|GET|DELETE /api/partner-bookings` — reserve, list, cancel 2h slots
-- `GET /api/partner-bookings/savings` — calendar-YTD savings vs public rates
+Full schema at `/docs`. Endpoints cover station bbox queries + filters, text/geocode search, recommendations, partner sites & availability, partner bookings (2h slots), and YTD savings.
 
 ## Notes
 
