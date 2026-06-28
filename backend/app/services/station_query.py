@@ -12,7 +12,7 @@ from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
 from app.services.pricing import is_valid_energy_price
 from app.services.pin_status import BLOCKING, aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
-from app.services.spatial import select_candidate_ids, select_map_pins
+from app.services.spatial import _cell_size_for_zoom, select_map_pins
 from app.services.tariff_join import resolve_connector_price
 
 
@@ -326,25 +326,39 @@ async def fetch_stations_in_bbox(
 
     envelope = ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
 
-    # ---- Phase 1: lightweight candidate selection over the whole bbox ----
-    # Default path is a pure GiST spatial scan over `stations` (no EVSE join),
-    # because candidate sampling in `select_candidate_ids` is color-agnostic and
-    # never reads availability. We only join/aggregate EVSE status when the
-    # caller actually filters by `availability=available` (the HAVING below).
+    # ---- Phase 1: bounded candidate selection over the whole bbox ----
+    # The grid de-clutter happens in Postgres (DISTINCT ON over a lat/lon grid)
+    # so at most `map_limit` ids ever leave the DB, instead of streaming every
+    # station in the viewport to Python and grid-sampling there. The GiST index
+    # `ix_stations_geom` backs the spatial scan. Cell size and the id tie-break
+    # mirror `select_candidate_ids`/`select_map_pins` in app.services.spatial,
+    # so the chosen pins are identical to the previous Python path.
     needs_availability = filters.get("availability") == "available"
 
+    cell = _cell_size_for_zoom(zoom)
+    grid_lat = func.floor(Station.latitude / cell)
+    grid_lon = func.floor(Station.longitude / cell)
+
     cand_q = (
-        select(Station.id, Station.latitude, Station.longitude)
+        select(Station.id)
         .select_from(Station)
         .where(ST_Intersects(Station.geom, envelope))
+        # One representative per grid cell, picking the max id (matches the
+        # color-agnostic id tie-break of the old Python selection).
+        .distinct(grid_lat, grid_lon)
+        .order_by(grid_lat, grid_lon, Station.id.desc())
     )
 
+    # Availability as an EXISTS predicate so it composes with DISTINCT ON
+    # (a join + group_by + having would conflict with the per-cell distinct).
+    # `ix_evses_station_status` backs this lookup.
     if needs_availability:
-        has_available_expr = func.bool_or(Evse.status == "AVAILABLE")
-        cand_q = (
-            cand_q.outerjoin(Evse, Evse.station_id == Station.id)
-            .group_by(Station.id, Station.latitude, Station.longitude)
-            .having(has_available_expr.is_(True))
+        cand_q = cand_q.where(
+            exists(
+                select(1)
+                .select_from(Evse)
+                .where(Evse.station_id == Station.id, Evse.status == "AVAILABLE")
+            )
         )
 
     # Cheap filters that don't require building summaries belong in Phase 1 so
@@ -364,21 +378,14 @@ async def fetch_stations_in_bbox(
     if filters.get("parking_type"):
         cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
 
-    cand_rows = (await session.execute(cand_q)).all()
-    if not cand_rows:
-        return []
-
-    candidates = [
-        {
-            "id": r.id,
-            "latitude": r.latitude,
-            "longitude": r.longitude,
-        }
-        for r in cand_rows
-    ]
-    chosen_ids = select_candidate_ids(
-        candidates, map_limit, min_lat, min_lon, max_lat, max_lon, zoom
-    )
+    # Cap to `map_limit` cell representatives, ordered by id desc to match the
+    # old Python tail (sorted reps, top `limit`).
+    cand_sub = cand_q.subquery()
+    chosen_ids = (
+        await session.execute(
+            select(cand_sub.c.id).order_by(cand_sub.c.id.desc()).limit(map_limit)
+        )
+    ).scalars().all()
     if not chosen_ids:
         return []
 
