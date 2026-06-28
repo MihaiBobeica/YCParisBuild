@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from geoalchemy2 import Geography
-from geoalchemy2.functions import ST_DWithin, ST_Intersects, ST_MakeEnvelope, ST_MakePoint, ST_SetSRID
-from sqlalchemy import and_, cast, distinct, exists, func, or_, select
+from geoalchemy2.functions import ST_DWithin, ST_MakeEnvelope, ST_MakePoint, ST_SetSRID
+from sqlalchemy import Float, and_, cast, distinct, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,7 +12,7 @@ from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
 from app.services.pricing import is_valid_energy_price
 from app.services.pin_status import BLOCKING, aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
-from app.services.spatial import _cell_size_for_zoom, select_map_pins
+from app.services.spatial import _cell_size_for_zoom
 from app.services.tariff_join import resolve_connector_price
 
 
@@ -324,87 +324,114 @@ async def fetch_stations_in_bbox(
     filters = filters or {}
     connector_type = filters.get("connector_type")
 
-    envelope = ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
+    # Bbox overlap on the geography GiST index. For point geometries an
+    # axis-aligned envelope overlap (`&&`) is exact, so we skip the per-row
+    # `ST_Intersects` recheck the previous path paid on every heap tuple.
+    envelope = cast(ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326), Geography)
 
-    # ---- Phase 1: bounded candidate selection over the whole bbox ----
-    # The grid de-clutter happens in Postgres (DISTINCT ON over a lat/lon grid)
-    # so at most `map_limit` ids ever leave the DB, instead of streaming every
-    # station in the viewport to Python and grid-sampling there. The GiST index
-    # `ix_stations_geom` backs the spatial scan. Cell size and the id tie-break
-    # mirror `select_candidate_ids`/`select_map_pins` in app.services.spatial,
-    # so the chosen pins are identical to the previous Python path.
-    needs_availability = filters.get("availability") == "available"
+    # Pin fields are precomputed at sync time (see ndw_sync.refresh_station_pins),
+    # so the whole map view is served by a single spatial query with no EVSE/
+    # connector joins or aggregation. When a connector_type filter is active we
+    # read the exact per-standard snapshot from `pin_by_standard`; otherwise the
+    # station's overall summary columns.
+    if connector_type:
+        j = Station.pin_by_standard[connector_type]
+        price = cast(j["price"].astext, Float)
+        currency = j["currency"].astext
+        max_power = cast(j["kw"].astext, Float)
+        pin_color = j["color"].astext
+        availability_label = j["label"].astext
+    else:
+        price = Station.pin_energy_price
+        currency = Station.pin_currency
+        max_power = Station.pin_max_power_kw
+        pin_color = Station.pin_color
+        availability_label = Station.pin_availability_label
 
     cell = _cell_size_for_zoom(zoom)
     grid_lat = func.floor(Station.latitude / cell)
     grid_lon = func.floor(Station.longitude / cell)
 
-    cand_q = (
-        select(Station.id)
-        .select_from(Station)
-        .where(ST_Intersects(Station.geom, envelope))
-        # One representative per grid cell, picking the max id (matches the
-        # color-agnostic id tie-break of the old Python selection).
+    # One representative per grid cell, picking the max id (matches the
+    # color-agnostic id tie-break of the previous Python/SQL selection).
+    inner = (
+        select(
+            Station.id,
+            Station.name,
+            Station.address,
+            Station.city,
+            Station.latitude,
+            Station.longitude,
+            Station.operator_name,
+            Station.owner_name,
+            Station.parking_type,
+            Station.facilities,
+            Station.access_class,
+            price.label("energy_price"),
+            currency.label("currency"),
+            max_power.label("max_power_kw"),
+            pin_color.label("pin_color"),
+            availability_label.label("availability_label"),
+            Station.pin_standards.label("connector_types"),
+        )
+        .where(Station.geom.op("&&")(envelope))
+        .where(price > 0)
         .distinct(grid_lat, grid_lon)
         .order_by(grid_lat, grid_lon, Station.id.desc())
     )
 
-    # Availability as an EXISTS predicate so it composes with DISTINCT ON
-    # (a join + group_by + having would conflict with the per-cell distinct).
-    # `ix_evses_station_status` backs this lookup.
-    if needs_availability:
-        cand_q = cand_q.where(
-            exists(
-                select(1)
-                .select_from(Evse)
-                .where(Evse.station_id == Station.id, Evse.status == "AVAILABLE")
-            )
-        )
-
-    # Cheap filters that don't require building summaries belong in Phase 1 so
-    # the candidate set is already correct before sampling.
     if connector_type:
-        cand_q = cand_q.where(
-            exists(
-                select(1)
-                .select_from(Connector)
-                .where(Connector.station_id == Station.id, Connector.standard == connector_type)
-            )
-        )
-    if filters.get("operator"):
-        cand_q = cand_q.where(Station.operator_name.ilike(f"%{filters['operator']}%"))
-    if filters.get("access_class"):
-        cand_q = cand_q.where(Station.access_class == filters["access_class"])
-    if filters.get("parking_type"):
-        cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
-
-    # Cap to `map_limit` cell representatives, ordered by id desc to match the
-    # old Python tail (sorted reps, top `limit`).
-    cand_sub = cand_q.subquery()
-    chosen_ids = (
-        await session.execute(
-            select(cand_sub.c.id).order_by(cand_sub.c.id.desc()).limit(map_limit)
-        )
-    ).scalars().all()
-    if not chosen_ids:
-        return []
-
-    # ---- Phase 2: grouped SQL aggregation for the chosen ids (<= map_limit) ----
-    # No ORM EVSE/connector hydration: prices/power/status are aggregated in SQL.
-    results = await _aggregated_bbox_summaries(
-        session, chosen_ids, origin_lat, origin_lon, connector_type
-    )
-
+        inner = inner.where(Station.pin_by_standard.has_key(connector_type))
     if filters.get("availability") == "available":
-        results = [r for r in results if r["pin_color"] == "green"]
+        inner = inner.where(pin_color == "green")
     elif filters.get("availability") == "unavailable":
-        results = [r for r in results if r["pin_color"] == "red"]
+        inner = inner.where(pin_color == "red")
     if filters.get("max_price") is not None:
-        results = [r for r in results if r["energy_price"] is not None and r["energy_price"] <= filters["max_price"]]
+        inner = inner.where(price <= filters["max_price"])
     if filters.get("min_kw"):
-        results = [r for r in results if r["max_power_kw"] and r["max_power_kw"] >= filters["min_kw"]]
+        inner = inner.where(max_power >= filters["min_kw"])
+    if filters.get("operator"):
+        inner = inner.where(Station.operator_name.ilike(f"%{filters['operator']}%"))
+    if filters.get("access_class"):
+        inner = inner.where(Station.access_class == filters["access_class"])
+    if filters.get("parking_type"):
+        inner = inner.where(Station.parking_type == filters["parking_type"])
 
-    return select_map_pins(results, map_limit, min_lat, min_lon, max_lat, max_lon, zoom)
+    # Cap to `map_limit` cell representatives, ordered by id desc. The inner grid
+    # DISTINCT ON already declutters to one pin per cell, so no Python sampling.
+    sub = inner.subquery()
+    rows = (
+        await session.execute(select(sub).order_by(sub.c.id.desc()).limit(map_limit))
+    ).mappings().all()
+
+    has_origin = origin_lat is not None and origin_lon is not None
+    results: list[dict[str, Any]] = []
+    for r in rows:
+        summary: dict[str, Any] = {
+            "id": r["id"],
+            "name": r["name"],
+            "address": r["address"],
+            "city": r["city"],
+            "latitude": r["latitude"],
+            "longitude": r["longitude"],
+            "operator": r["operator_name"],
+            "owner": r["owner_name"],
+            "parking_type": r["parking_type"],
+            "facilities": r["facilities"] or [],
+            "access_class": r["access_class"],
+            "availability_label": r["availability_label"],
+            "energy_price": r["energy_price"],
+            "currency": r["currency"],
+            "max_power_kw": r["max_power_kw"],
+            "connector_types": r["connector_types"] or [],
+            "pin_color": r["pin_color"],
+        }
+        if has_origin:
+            summary["distance_km"] = round(
+                haversine_km(origin_lat, origin_lon, r["latitude"], r["longitude"]), 2
+            )
+        results.append(summary)
+    return results
 
 
 async def fetch_station_detail(session: AsyncSession, station_id: str) -> dict[str, Any] | None:

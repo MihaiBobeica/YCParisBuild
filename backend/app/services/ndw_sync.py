@@ -161,6 +161,7 @@ def sync_locations() -> int:
             tariff_count = session.scalar(select(func.count()).select_from(Tariff)) or 0
             if tariff_count > 0:
                 purge_priceless_stations()
+                refresh_station_pins()
         logger.info("Locations sync complete: %d stations", count)
         return count
     except Exception as e:
@@ -372,6 +373,60 @@ def backfill_connector_prices() -> int:
 
     logger.info("Connector price backfill complete: %d updated", updated)
     purge_priceless_stations()
+    refresh_station_pins()
+    return updated
+
+
+def _chunked(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+def refresh_station_pins(batch_size: int = 500) -> int:
+    """Recompute the denormalized map-pin summary on every station.
+
+    Reuses `_station_summary` so the price/power/color/label logic is identical
+    to the on-demand path (zero divergence). `pin_by_standard` snapshots exact
+    per-connector-type values so the map endpoint can serve connector-filtered
+    views without aggregating at request time. Runs at sync cadence (the same
+    work previously done per request, now amortized once per sync).
+    """
+    from app.services.station_query import _station_summary
+
+    logger.info("Refreshing station pin summaries")
+    updated = 0
+    with SyncSession() as session:
+        ids = list(session.scalars(select(Station.id)).all())
+        for chunk in _chunked(ids, batch_size):
+            stations = session.scalars(
+                select(Station)
+                .where(Station.id.in_(chunk))
+                .options(selectinload(Station.evses).selectinload(Evse.connectors))
+            ).all()
+            for s in stations:
+                overall = _station_summary(s, tariffs_map={}) or {}
+                by_std: dict[str, dict] = {}
+                standards = {c.standard for e in s.evses for c in e.connectors if c.standard}
+                for std in standards:
+                    sub = _station_summary(s, tariffs_map={}, connector_type=std)
+                    if sub and sub.get("energy_price"):
+                        by_std[std] = {
+                            "price": sub["energy_price"],
+                            "currency": sub["currency"],
+                            "kw": sub["max_power_kw"],
+                            "color": sub["pin_color"],
+                            "label": sub["availability_label"],
+                        }
+                s.pin_energy_price = overall.get("energy_price")
+                s.pin_currency = overall.get("currency")
+                s.pin_max_power_kw = overall.get("max_power_kw")
+                s.pin_color = overall.get("pin_color")
+                s.pin_availability_label = overall.get("availability_label")
+                s.pin_standards = overall.get("connector_types") or []
+                s.pin_by_standard = by_std
+                updated += 1
+            session.commit()
+    logger.info("Refreshed pin summaries for %d stations", updated)
     return updated
 
 

@@ -8,6 +8,7 @@ from app.models import Connector, Station, Tariff
 from app.services.ndw_sync import (
     SyncSession,
     backfill_connector_prices,
+    refresh_station_pins,
     sync_locations,
     sync_tariffs,
 )
@@ -48,6 +49,11 @@ def bootstrap_ndw_data(*, strict: bool = False) -> None:
                 )
             if missing and missing > 0:
                 backfill_connector_prices()
+
+        # Ensure denormalized pin summaries exist even when no sync ran this
+        # deploy (e.g. an already-populated DB getting the feature for the
+        # first time). Runs before traffic via the predeploy command.
+        refresh_station_pins()
     except Exception:
         logger.exception("Bootstrap NDW sync failed")
         if strict:

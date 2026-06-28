@@ -44,6 +44,18 @@ class Station(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Precomputed map-pin summary, refreshed at sync time so the map endpoint can
+    # serve pins from a single spatial query with no EVSE/connector aggregation.
+    # `pin_by_standard` holds exact per-connector-type values: {standard: {price,
+    # currency, kw, color, label}}.
+    pin_energy_price: Mapped[float | None] = mapped_column(Float)
+    pin_currency: Mapped[str | None] = mapped_column(String(3))
+    pin_max_power_kw: Mapped[float | None] = mapped_column(Float)
+    pin_color: Mapped[str | None] = mapped_column(String(8))
+    pin_availability_label: Mapped[str | None] = mapped_column(String(48))
+    pin_standards: Mapped[list | None] = mapped_column(JSONB, default=list)
+    pin_by_standard: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+
     evses: Mapped[list["Evse"]] = relationship(back_populates="station", cascade="all, delete-orphan")
 
     __table_args__ = (

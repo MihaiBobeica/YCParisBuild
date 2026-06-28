@@ -129,7 +129,7 @@ async def list_stations(
         f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{connector_type}:"
         f"{min_kw}:{operator}:{parking_type}:{access_class}:{map_limit}:{zoom_int}".encode()
     ).hexdigest()
-    cached = await cache_get(f"map:bbox:v6:{cache_key}")
+    cached = await cache_get(f"map:bbox:v7:{cache_key}")
     if cached:
         return cached
 
@@ -150,7 +150,7 @@ async def list_stations(
         raise HTTPException(400, str(e))
 
     if results:
-        await cache_set(f"map:bbox:v6:{cache_key}", results, 180)
+        await cache_set(f"map:bbox:v7:{cache_key}", results, 180)
     return results
 
 
