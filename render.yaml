@@ -24,8 +24,9 @@ services:
     healthCheckPath: /api/health
     # Run DB migrations, then seed NDW data when the database is still empty.
     # Initial locations sync takes several minutes; committing in batches keeps
-    # memory bounded on Render's smaller instances.
-    preDeployCommand: alembic upgrade head && python scripts/bootstrap_data.py
+    # memory bounded on Render's smaller instances. Wrapped in `sh -c` because
+    # the pre-deploy command is not run through a shell (so `&&` is not parsed).
+    preDeployCommand: sh -c "alembic upgrade head && python scripts/bootstrap_data.py"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
