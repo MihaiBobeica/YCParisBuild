@@ -2,7 +2,7 @@
 
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.models import Connector, Station, Tariff
 from app.services.ndw_sync import (
@@ -39,7 +39,12 @@ def bootstrap_ndw_data(*, strict: bool = False) -> None:
                 missing = session.scalar(
                     select(func.count())
                     .select_from(Connector)
-                    .where(Connector.resolved_energy_price.is_(None))
+                    .where(
+                        or_(
+                            Connector.resolved_energy_price.is_(None),
+                            Connector.resolved_energy_price <= 0,
+                        )
+                    )
                 )
             if missing and missing > 0:
                 backfill_connector_prices()

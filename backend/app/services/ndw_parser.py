@@ -124,9 +124,10 @@ def parse_tariff(t: dict[str, Any]) -> dict[str, Any] | None:
     restrictions = []
     for el in t.get("elements") or []:
         for pc in el.get("price_components") or []:
+            raw = pc.get("price")
             components.append({
                 "type": pc.get("type", ""),
-                "price": float(pc.get("price", 0)),
+                "price": float(raw) if raw is not None else None,
                 "vat": pc.get("vat"),
                 "step_size": pc.get("step_size"),
             })

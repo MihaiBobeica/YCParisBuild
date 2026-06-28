@@ -65,10 +65,12 @@ export function ChargerDetailSheet({
           </div>
 
           <div className="detail-grid">
-            <div className="detail-cell">
-              <span className="detail-k">Price / kWh</span>
-              <span className="detail-v">€{(station.energy_price ?? 0).toFixed(2)}</span>
-            </div>
+            {station.energy_price != null && station.energy_price > 0 && (
+              <div className="detail-cell">
+                <span className="detail-k">Price / kWh</span>
+                <span className="detail-v">€{station.energy_price.toFixed(2)}</span>
+              </div>
+            )}
             <div className="detail-cell">
               <span className="detail-k">Max power</span>
               <span className="detail-v">{station.max_power_kw != null ? `${station.max_power_kw} kW` : 'Unknown'}</span>

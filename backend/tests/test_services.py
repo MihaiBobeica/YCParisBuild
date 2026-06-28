@@ -2,7 +2,9 @@ import pytest
 
 from app.services.ndw_parser import make_tariff_id, parse_location, parse_tariff
 from app.services.pin_status import aggregate_pin_color, availability_summary
+from app.services.pricing import is_valid_energy_price
 from app.services.recommendation import build_recommendations, haversine_km
+from app.services.station_query import _connector_price_from_map, _station_summary
 from app.services.tariff_join import resolve_connector_price
 
 
@@ -82,6 +84,111 @@ def test_tariff_join():
     assert price == 0.42
     assert currency == "EUR"
     assert matched is True
+
+
+def test_is_valid_energy_price():
+    assert not is_valid_energy_price(None)
+    assert not is_valid_energy_price(0)
+    assert not is_valid_energy_price(0.0)
+    assert is_valid_energy_price(0.42)
+
+
+def test_resolve_connector_price_rejects_zero():
+    connector = {
+        "tariff_ids": ["T1"],
+        "country_code": "NL",
+        "party_id": "ABC",
+    }
+    tariffs = {
+        make_tariff_id("NL", "ABC", "T1"): {
+            "currency": "EUR",
+            "price_components": [{"type": "ENERGY", "price": 0}],
+            "restrictions": [],
+        }
+    }
+    price, currency, matched = resolve_connector_price(connector, tariffs)
+    assert price is None
+    assert currency is None
+    assert matched is True
+
+
+def test_parse_tariff_missing_price():
+    t = parse_tariff({
+        "country_code": "NL",
+        "party_id": "ABC",
+        "id": "T2",
+        "currency": "EUR",
+        "last_updated": "2024-01-15T10:00:00Z",
+        "elements": [{"price_components": [{"type": "ENERGY", "vat": 21.0}], "restrictions": {}}],
+    })
+    assert t is not None
+    assert t["price_components"][0]["price"] is None
+
+
+def test_connector_price_from_map_rejects_cached_zero():
+    from unittest.mock import MagicMock
+
+    conn = MagicMock()
+    conn.resolved_energy_price = 0.0
+    conn.resolved_currency = "EUR"
+    conn.tariff_ids = []
+    price, currency = _connector_price_from_map(conn, {})
+    assert price is None
+    assert currency is None
+
+
+def test_station_summary_excludes_zero_prices():
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+
+    conn = MagicMock()
+    conn.resolved_energy_price = 0.0
+    conn.resolved_currency = "EUR"
+    conn.tariff_ids = []
+    conn.standard = "IEC_62196_T2"
+    conn.max_power_kw = 50.0
+    evse = MagicMock()
+    evse.status = "AVAILABLE"
+    evse.connectors = [conn]
+    evse.last_updated = datetime(2024, 1, 15, tzinfo=timezone.utc)
+    station = MagicMock()
+    station.id = "NL:ABC:LOC001"
+    station.name = "Zero Price"
+    station.address = "Test 1"
+    station.city = "Amsterdam"
+    station.latitude = 52.37
+    station.longitude = 4.90
+    station.operator_name = "Op"
+    station.owner_name = None
+    station.parking_type = None
+    station.facilities = []
+    station.access_class = "public"
+    station.last_updated = datetime(2024, 1, 15, tzinfo=timezone.utc)
+    station.evses = [evse]
+
+    summary = _station_summary(station)
+    assert summary is not None
+    assert not is_valid_energy_price(summary["energy_price"])
+
+
+def test_purge_priceless_stations_removes_zero_prices():
+    from unittest.mock import MagicMock, patch
+
+    from app.services.ndw_sync import purge_priceless_stations
+
+    session = MagicMock()
+    station_delete = MagicMock(rowcount=2)
+    session.execute = MagicMock(side_effect=[MagicMock(), MagicMock(), station_delete])
+    session.commit = MagicMock()
+
+    with patch("app.services.ndw_sync.SyncSession") as sync_session:
+        sync_session.return_value.__enter__ = MagicMock(return_value=session)
+        sync_session.return_value.__exit__ = MagicMock(return_value=False)
+        removed = purge_priceless_stations()
+
+    assert removed == 2
+    assert session.execute.call_count == 3
+    session.commit.assert_called_once()
 
 
 def test_pin_color_green():

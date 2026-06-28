@@ -1,6 +1,8 @@
 import math
 from typing import Any
 
+from app.services.pricing import is_valid_energy_price
+
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 6371.0
@@ -44,7 +46,7 @@ def build_recommendations(
     if not nearby:
         nearby = sorted(stations, key=lambda x: x["distance_km"])[:5]
 
-    priced = [s for s in nearby if s.get("energy_price") is not None]
+    priced = [s for s in nearby if is_valid_energy_price(s.get("energy_price"))]
     max_power = max((s.get("max_power_kw") or 0 for s in nearby), default=1) or 1
     max_dist = max((s["distance_km"] for s in nearby), default=1) or 1
 
@@ -58,7 +60,7 @@ def build_recommendations(
 
     def overall_score(s: dict) -> float:
         price_score = 0.0
-        if s.get("energy_price") is not None and priced:
+        if is_valid_energy_price(s.get("energy_price")) and priced:
             prices = [p["energy_price"] for p in priced]
             mn, mx = min(prices), max(prices)
             if mx > mn:
@@ -110,7 +112,7 @@ def build_recommendations(
 
     cheap_candidates = [
         s for s in nearby
-        if s.get("energy_price") is not None and s["_avail"] > 0
+        if is_valid_energy_price(s.get("energy_price")) and s["_avail"] > 0
     ]
     if cheap_candidates:
         cheapest = min(cheap_candidates, key=lambda x: x["energy_price"])

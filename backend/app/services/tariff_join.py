@@ -75,7 +75,7 @@ def resolve_connector_price(
                 energy_price = pc.get("price")
                 energy_currency = tariff.get("currency")
                 break
-        if energy_price is None:
+        if energy_price is None or energy_price <= 0:
             continue
         if fallback_price is None:
             fallback_price = energy_price

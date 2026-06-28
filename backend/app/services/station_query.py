@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
+from app.services.pricing import is_valid_energy_price
 from app.services.pin_status import aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
 from app.services.spatial import select_candidate_ids, select_map_pins
@@ -67,7 +68,7 @@ async def load_tariffs_map(session: AsyncSession, keys: set[str]) -> dict[str, d
 
 
 def _connector_price_from_map(connector, tariffs_map: dict[str, dict]) -> tuple[float | None, str | None]:
-    if connector.resolved_energy_price is not None:
+    if is_valid_energy_price(connector.resolved_energy_price):
         return connector.resolved_energy_price, connector.resolved_currency
     if not connector.tariff_ids:
         return None, None
@@ -104,7 +105,7 @@ def _station_summary(
     currency = None
     for c in connectors:
         price, cur = _connector_price_from_map(c, tariffs_map or {})
-        if price is not None:
+        if is_valid_energy_price(price):
             prices.append(price)
             currency = currency or cur
     energy_price = min(prices) if prices else None
@@ -198,6 +199,17 @@ async def fetch_stations_in_bbox(
         cand_q = cand_q.where(Station.access_class == filters["access_class"])
     if filters.get("parking_type"):
         cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
+    cand_q = cand_q.where(
+        exists(
+            select(1)
+            .select_from(Connector)
+            .where(
+                Connector.station_id == Station.id,
+                Connector.resolved_energy_price.isnot(None),
+                Connector.resolved_energy_price > 0,
+            )
+        )
+    )
     if filters.get("availability") == "available":
         cand_q = cand_q.having(has_available_expr.is_(True))
 
@@ -242,7 +254,7 @@ async def fetch_stations_in_bbox(
     results: list[dict[str, Any]] = []
     for s in stations:
         summary = _station_summary(s, origin_lat, origin_lon, tariffs_map, connector_type)
-        if summary:
+        if summary and is_valid_energy_price(summary.get("energy_price")):
             results.append(summary)
 
     if filters.get("availability") == "available":
@@ -275,6 +287,8 @@ async def fetch_station_detail(session: AsyncSession, station_id: str) -> dict[s
     tariffs_map = await load_tariffs_map(session, tariff_keys)
 
     summary = _station_summary(station, tariffs_map=tariffs_map)
+    if not summary or not is_valid_energy_price(summary.get("energy_price")):
+        return None
     evses_detail = []
     time_fee = parking_fee = flat_fee = None
     session_fee_currency = summary.get("currency")
@@ -345,7 +359,11 @@ async def search_stations_text(
             .limit(limit)
         )
     ).all()
-    return [_station_summary(s) for s in stations]
+    return [
+        summary
+        for s in stations
+        if (summary := _station_summary(s)) and is_valid_energy_price(summary.get("energy_price"))
+    ]
 
 
 async def fetch_nearby(
@@ -375,7 +393,7 @@ async def fetch_nearby(
     results: list[dict[str, Any]] = []
     for s in stations:
         summary = _station_summary(s, lat, lon, connector_type=connector_type)
-        if summary:
+        if summary and is_valid_energy_price(summary.get("energy_price")):
             results.append(summary)
     return sorted(results, key=lambda x: x.get("distance_km", 999))
 

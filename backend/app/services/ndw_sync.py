@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import ijson
-from sqlalchemy import create_engine, delete, exists, func, select, text
+from sqlalchemy import create_engine, delete, exists, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker, selectinload
 
 from app.config import settings
@@ -376,7 +376,12 @@ def purge_priceless_stations() -> int:
     logger.info("Purging priceless stations")
     with SyncSession() as session:
         session.execute(
-            delete(Connector).where(Connector.resolved_energy_price.is_(None))
+            delete(Connector).where(
+                or_(
+                    Connector.resolved_energy_price.is_(None),
+                    Connector.resolved_energy_price <= 0,
+                )
+            )
         )
         session.execute(
             delete(Evse).where(
