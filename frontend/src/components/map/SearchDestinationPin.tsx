@@ -1,4 +1,4 @@
-import { CircleMarker, Marker } from 'react-leaflet';
+import { Marker } from 'react-leaflet';
 import L from 'leaflet';
 
 export interface SearchDestination {
@@ -8,17 +8,18 @@ export interface SearchDestination {
 }
 
 function destinationIcon(label: string) {
-  const short = label.length > 22 ? `${label.slice(0, 20)}…` : label;
+  const short = label.length > 24 ? `${label.slice(0, 22)}…` : label;
   return L.divIcon({
-    className: 'search-pin-wrap',
+    className: 'dest-pin-wrap',
     html: `
-      <div class="search-pin">
-        <div class="search-pin-dot"></div>
-        <div class="search-pin-label">${short}</div>
+      <div class="dest-pin">
+        <span class="dest-pin-ring"></span>
+        <span class="dest-pin-dot"></span>
+        <div class="dest-pin-label">${short}</div>
       </div>
     `,
-    iconSize: [120, 56],
-    iconAnchor: [14, 14],
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 }
 
@@ -26,22 +27,10 @@ export function SearchDestinationPin({ destination }: { destination: SearchDesti
   if (!destination) return null;
 
   return (
-    <>
-      <CircleMarker
-        center={[destination.lat, destination.lon]}
-        radius={18}
-        pathOptions={{
-          color: '#007AFF',
-          weight: 2,
-          fillColor: '#007AFF',
-          fillOpacity: 0.15,
-        }}
-      />
-      <Marker
-        position={[destination.lat, destination.lon]}
-        icon={destinationIcon(destination.label)}
-        zIndexOffset={1000}
-      />
-    </>
+    <Marker
+      position={[destination.lat, destination.lon]}
+      icon={destinationIcon(destination.label)}
+      zIndexOffset={1000}
+    />
   );
 }

@@ -86,6 +86,7 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
     async (station: StationPin | RecommendationCard) => {
       const id = 'station_id' in station ? station.station_id : station.id;
       setSelectedId(id);
+      setSearchDestination(null);
       try {
         const [d, alts] = await Promise.all([fetchStationDetail(id), fetchAlternatives(id)]);
         setDetail(d);
@@ -102,6 +103,7 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
   const selectPartner = useCallback(
     (site: PartnerSite) => {
       setSelectedPartner(site);
+      setSearchDestination(null);
       flyTo(site.latitude, site.longitude, 15, `partner-${site.id}`);
     },
     [flyTo],

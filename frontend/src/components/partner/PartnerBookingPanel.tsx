@@ -74,6 +74,25 @@ function fmtPredictedPrice(eurPerKwh: number, estimated: boolean): string {
   return estimated ? `Est. ${price}` : price;
 }
 
+function SlotPriceLabel({
+  text,
+  lowPrice,
+  estimated,
+}: {
+  text: string;
+  lowPrice: boolean;
+  estimated: boolean;
+}) {
+  return (
+    <span
+      className={`partner-slot-price${lowPrice ? ' partner-slot-price--low' : ''}${estimated ? ' partner-slot-price--estimated' : ''}`}
+      title={estimated ? 'Estimated price for this upcoming slot' : undefined}
+    >
+      {text}
+    </span>
+  );
+}
+
 function isFutureSlot(slotStartIso: string): boolean {
   return new Date(slotStartIso).getTime() > Date.now();
 }
@@ -215,12 +234,11 @@ export function PartnerBookingPanel({ site, email, onBooked }: Props) {
                   <span className="partner-slot-time">
                     {fmtTime(s.slot_start)} – {fmtTime(s.slot_end)}
                   </span>
-                  <span
-                    className={`partner-slot-price${lowPrice ? ' partner-slot-price--low' : ''}${estimated ? ' partner-slot-price--estimated' : ''}`}
-                    title={estimated ? 'Estimated price for this upcoming slot' : undefined}
-                  >
-                    {fmtPredictedPrice(predicted, estimated)}
-                  </span>
+                  <SlotPriceLabel
+                    text={fmtPredictedPrice(predicted, estimated)}
+                    lowPrice={lowPrice}
+                    estimated={estimated}
+                  />
                   <span className="partner-slot-cap">
                     {full ? 'Full' : `${s.remaining} / ${s.total_slots} free`}
                   </span>

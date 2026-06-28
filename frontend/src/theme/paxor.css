@@ -1189,34 +1189,69 @@ input {
 }
 
 /* Search destination pin */
-.search-pin-wrap {
+.dest-pin-wrap {
   background: transparent !important;
   border: none !important;
 }
 
-.search-pin {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+.dest-pin {
+  position: relative;
+  width: 20px;
+  height: 20px;
 }
 
-.search-pin-dot {
+/* Solid dot centered on the coordinate */
+.dest-pin-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 14px;
   height: 14px;
+  margin: -7px 0 0 -7px;
   border-radius: 50%;
-  background: #007aff;
+  background: #006fff;
   border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.45);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+  z-index: 2;
 }
 
-.search-pin-label {
-  margin-top: 4px;
-  margin-left: 18px;
-  background: white;
+/* One thin, subtle pulsing ring behind the dot */
+.dest-pin-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 111, 255, 0.5);
+  z-index: 1;
+  animation: dest-ring 2.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+
+@keyframes dest-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+.dest-pin-label {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
   padding: 4px 10px;
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 11px;
   font-weight: 600;
+  color: #0f172a;
   box-shadow: var(--paxor-shadow-float);
   white-space: nowrap;
 }
@@ -1290,12 +1325,12 @@ input {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 6px;
-  padding: 5px 7px;
+  margin-bottom: 7px;
+  padding: 6px 8px;
   background: #ffffff;
-  border-radius: 7px;
+  border-radius: 8px;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 2px 9px rgba(15, 23, 42, 0.15);
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -1304,7 +1339,7 @@ input {
 }
 
 .partner-pin-bubble-price {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.2px;
@@ -1312,7 +1347,7 @@ input {
 }
 
 .partner-pin-bubble-cap {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   color: #64748b;
   line-height: 1.1;
@@ -1324,7 +1359,7 @@ input {
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
-  border: 4px solid transparent;
+  border: 5px solid transparent;
   border-top-color: #ffffff;
 }
 
@@ -1500,23 +1535,19 @@ input {
   font-weight: 700;
   color: var(--paxor-text);
   white-space: nowrap;
-  text-shadow: 0 0 8px rgba(15, 23, 42, 0.12);
 }
 
 .partner-slot-price--low {
   color: #15803d;
-  text-shadow: 0 0 10px rgba(34, 197, 94, 0.55), 0 0 18px rgba(34, 197, 94, 0.25);
 }
 
 .partner-slot-price--estimated {
   font-weight: 600;
   color: var(--paxor-text-muted);
-  text-shadow: 0 0 8px rgba(100, 116, 139, 0.2);
 }
 
 .partner-slot-price--estimated.partner-slot-price--low {
   color: #15803d;
-  text-shadow: 0 0 10px rgba(34, 197, 94, 0.55), 0 0 18px rgba(34, 197, 94, 0.25);
 }
 
 .partner-slot-cap {
