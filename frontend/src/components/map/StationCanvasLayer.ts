@@ -275,7 +275,9 @@ export class StationCanvasLayer extends L.Layer {
     ctx.strokeStyle = selected ? SELECT_RING : '#fff';
     ctx.stroke();
 
-    if (isGreen && !selected && zoom >= 13 && gs.s.max_power_kw != null) {
+    // Show the kW capacity label on every green pin (all zoom levels). Unknown
+    // power has nothing to print, so it's omitted; a selected pin shows the chip.
+    if (isGreen && !selected && gs.s.max_power_kw != null) {
       drawPinKwLabel(ctx, x, y, r, formatPinKw(gs.s.max_power_kw));
     }
   }

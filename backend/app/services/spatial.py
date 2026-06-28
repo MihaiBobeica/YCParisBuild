@@ -34,10 +34,9 @@ def _cell_size_for_zoom(zoom: int | None) -> float:
 
 
 def _station_score(s: dict[str, Any]) -> tuple:
-    color = s.get("pin_color", "gray")
-    color_pri = {"green": 4, "red": 3, "orange": 2, "gray": 1}.get(color, 0)
-    has_price = 1 if s.get("energy_price") is not None else 0
-    return (color_pri, has_price, s.get("id", ""))
+    # Color-agnostic: the representative per cell is chosen by a stable id
+    # tie-break only, so decluttering never favors available/green pins.
+    return (s.get("id", ""),)
 
 
 def _cell_key(lat: float, lon: float, cell_size: float) -> tuple[int, int]:
@@ -45,7 +44,8 @@ def _cell_key(lat: float, lon: float, cell_size: float) -> tuple[int, int]:
 
 
 def _candidate_score(c: dict[str, Any]) -> tuple:
-    return (1 if c.get("has_available") else 0, c.get("id", ""))
+    # Color-agnostic: id tie-break only, no availability bias.
+    return (c.get("id", ""),)
 
 
 def select_candidate_ids(
@@ -58,10 +58,10 @@ def select_candidate_ids(
     zoom: int | None = None,
 ) -> list[str]:
     """
-    Grid-sample lightweight candidates (id/lat/lon/has_available) down to
-    `limit` station ids, one representative per zoom cell, preferring stations
-    that have an available EVSE. Mirrors `select_map_pins` but scores on the
-    cheap `has_available` flag so we never need full pin colors here.
+    Grid-sample lightweight candidates (id/lat/lon) down to `limit` station ids,
+    one representative per zoom cell. Color-agnostic: the representative is
+    chosen by a stable id tie-break only, so selection never favors available
+    pins and survivors thin out independent of color.
     """
     if len(candidates) <= limit:
         return [c["id"] for c in candidates]

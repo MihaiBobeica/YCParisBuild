@@ -24,10 +24,19 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  /* Stop pull-to-refresh / rubber-banding behind the map, and iOS font inflation. */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  margin: 0;
   font-family: var(--paxor-font);
   background: var(--paxor-bg);
   color: var(--paxor-text);
@@ -97,6 +106,7 @@ input {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -168,6 +178,8 @@ input {
   z-index: 1100;
   max-height: 85vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 20px;
 }
 
@@ -606,8 +618,8 @@ input {
 }
 
 .map-zoom-controls button {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: none;
   border-radius: 10px;
   background: white;
@@ -714,7 +726,8 @@ input {
   flex: 1;
   border: none;
   border-radius: var(--paxor-radius-pill);
-  padding: 10px;
+  padding: 12px;
+  min-height: 44px;
   font-weight: 600;
   font-size: 14px;
   background: var(--paxor-bg-muted);
@@ -745,6 +758,8 @@ input {
   max-width: 520px;
   max-height: 88vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background: white;
   border-radius: 28px 28px 0 0;
   padding: 12px 20px calc(32px + env(safe-area-inset-bottom, 0px));
@@ -754,7 +769,7 @@ input {
 
 .menu-sheet-header {
   display: grid;
-  grid-template-columns: 36px 1fr auto;
+  grid-template-columns: 40px 1fr auto;
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
@@ -762,8 +777,8 @@ input {
 
 .menu-sheet-close {
   grid-column: 1;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
   background: var(--paxor-bg-muted);
@@ -821,7 +836,8 @@ input {
 .filter-operator-select {
   width: 100%;
   margin-bottom: 12px;
-  font-size: 15px;
+  /* 16px keeps iOS Safari from auto-zooming on focus. */
+  font-size: 16px;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238E8E93' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -857,9 +873,11 @@ input {
   max-width: 520px;
   max-height: 88vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background: white;
   border-radius: 28px 28px 0 0;
-  padding: 12px 20px 32px;
+  padding: 12px 20px calc(32px + env(safe-area-inset-bottom, 0px));
   box-shadow: var(--paxor-shadow-sheet);
 }
 
@@ -979,7 +997,8 @@ input {
   padding: 12px 16px;
   border-radius: 14px;
   border: 1px solid #eee;
-  font-size: 15px;
+  /* 16px keeps iOS Safari from auto-zooming on focus. */
+  font-size: 16px;
 }
 
 .connector-grid {
@@ -1322,14 +1341,35 @@ input {
   padding: 16px 0;
 }
 
+.partner-retry {
+  width: 100%;
+  margin: 8px 0;
+  padding: 14px;
+  border: 1px dashed var(--paxor-pin-occupied);
+  border-radius: var(--paxor-radius-card);
+  background: rgba(239, 68, 68, 0.06);
+  color: var(--paxor-pin-occupied);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .partner-day-tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.partner-day-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .partner-day-tab {
-  flex: 1;
+  flex: 1 0 auto;
+  min-width: 84px;
   display: flex;
   flex-direction: column;
   align-items: center;

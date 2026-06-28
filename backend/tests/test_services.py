@@ -173,8 +173,9 @@ def test_map_limit_for_zoom():
     from app.services.spatial import map_limit_for_zoom
 
     assert map_limit_for_zoom(8) == 45
-    assert map_limit_for_zoom(13) == 140
-    assert map_limit_for_zoom(16) == 180
+    assert map_limit_for_zoom(13) == 170
+    assert map_limit_for_zoom(15) == 240
+    assert map_limit_for_zoom(16) == 320
 
 
 def test_compute_session_savings():

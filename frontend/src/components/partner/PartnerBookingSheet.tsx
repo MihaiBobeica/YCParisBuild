@@ -46,13 +46,16 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [done, setDone] = useState(false);
 
   const load = async () => {
+    setLoadError(false);
     try {
       const data = await fetchPartnerAvailability(site.id);
       setSlots(data);
     } catch {
+      setLoadError(true);
       setSlots([]);
     }
   };
@@ -148,6 +151,10 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
 
       {slots === null ? (
         <p className="field-hint partner-loading">Loading available times…</p>
+      ) : loadError ? (
+        <button type="button" className="partner-retry" onClick={load}>
+          Couldn’t load times. Tap to retry.
+        </button>
       ) : days.length === 0 ? (
         <p className="field-hint">No upcoming slots available.</p>
       ) : (

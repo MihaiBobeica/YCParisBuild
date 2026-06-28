@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -110,18 +110,25 @@ async def slot_availability(session: AsyncSession, site: dict) -> list[dict]:
 
     window_start = slots[0][0]
     window_end = slots[-1][1]
-    rows = (
-        await session.execute(
-            select(PartnerBooking.slot_start, func.count())
-            .where(
-                PartnerBooking.partner_site_id == site["id"],
-                PartnerBooking.slot_start >= window_start,
-                PartnerBooking.slot_start < window_end,
+    # The booked-count query can fail if migration 003 hasn't been applied yet
+    # (partner_bookings table missing). Degrade gracefully so the site always
+    # shows its full grid (every block free) instead of an empty "no slots".
+    try:
+        rows = (
+            await session.execute(
+                select(PartnerBooking.slot_start, func.count())
+                .where(
+                    PartnerBooking.partner_site_id == site["id"],
+                    PartnerBooking.slot_start >= window_start,
+                    PartnerBooking.slot_start < window_end,
+                )
+                .group_by(PartnerBooking.slot_start)
             )
-            .group_by(PartnerBooking.slot_start)
-        )
-    ).all()
-    booked_by_start = {_as_utc(r[0]): r[1] for r in rows}
+        ).all()
+        booked_by_start = {_as_utc(r[0]): r[1] for r in rows}
+    except SQLAlchemyError:
+        await session.rollback()
+        booked_by_start = {}
 
     total = int(site.get("total_slots", 0))
     out: list[dict] = []
