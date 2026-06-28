@@ -5,16 +5,13 @@ import {
   type SlotAvailability,
 } from '../../api/client';
 import type { PartnerSite } from '../../data/partnerSites';
-import { MenuSheet } from '../layout/MenuSheet';
 
 const TZ = 'Europe/Amsterdam';
 
 interface Props {
   site: PartnerSite;
   email: string;
-  onSetEmail: (email: string) => void;
   onBooked: () => void;
-  onClose: () => void;
 }
 
 function dayKey(iso: string): string {
@@ -40,7 +37,7 @@ function dayLabel(key: string): { title: string; sub: string } {
   return { title: d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: TZ }), sub };
 }
 
-export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose }: Props) {
+export function PartnerBookingPanel({ site, email, onBooked }: Props) {
   const [slots, setSlots] = useState<SlotAvailability[] | null>(null);
   const [activeDay, setActiveDay] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -92,7 +89,7 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
 
   const confirm = async () => {
     if (!email) {
-      setError('Add your email above to reserve.');
+      setError('Sign in to reserve a slot.');
       return;
     }
     if (selected.size === 0 || !slots) return;
@@ -111,7 +108,13 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
       onBooked();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Booking failed';
-      setError(msg.includes('409') || /fully booked/i.test(msg) ? 'One of those blocks just filled up. Try another.' : 'Booking failed. Please try again.');
+      if (msg.includes('503') || /temporarily unavailable/i.test(msg)) {
+        setError('Booking is temporarily unavailable. Try again in a moment.');
+      } else if (msg.includes('409') || /fully booked/i.test(msg)) {
+        setError('One of those blocks just filled up. Try another.');
+      } else {
+        setError('Booking failed. Please try again.');
+      }
       await load();
     } finally {
       setSubmitting(false);
@@ -121,30 +124,7 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
   const activeSlots = days[activeDay]?.slots ?? [];
 
   return (
-    <MenuSheet title="Reserve a charging slot" onClose={onClose}>
-      <div className="partner-sheet-head">
-        <div className="partner-sheet-titles">
-          <strong>{site.name}</strong>
-          <span>{site.address}</span>
-        </div>
-        <div className="partner-rate-badge">
-          €{site.energy_price.toFixed(2)}/kWh · {Math.round(site.max_power_kw)} kW
-        </div>
-      </div>
-
-      {!email && (
-        <div className="partner-email-row">
-          <label className="field-label">Email (to hold your reservation)</label>
-          <input
-            className="field-input"
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => onSetEmail(e.target.value)}
-          />
-        </div>
-      )}
-
+    <div className="partner-booking-panel">
       {done && (
         <div className="partner-booking-success">Reservation confirmed. See it in your account.</div>
       )}
@@ -213,6 +193,6 @@ export function PartnerBookingSheet({ site, email, onSetEmail, onBooked, onClose
             ? `Reserve ${selected.size} slot${selected.size > 1 ? 's' : ''}`
             : 'Select a time slot'}
       </button>
-    </MenuSheet>
+    </div>
   );
 }

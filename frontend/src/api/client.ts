@@ -142,34 +142,8 @@ export function fetchRecommendations(
   });
 }
 
-export function fetchMonitor(ids: string[]) {
-  return request<{ stations: StationPin[]; best_alternative: StationPin | null }>(
-    `/api/monitor?ids=${ids.join(',')}`,
-  );
-}
-
 export function fetchOperators() {
   return request<string[]>('/api/filters/operators');
-}
-
-export function createCheckout(plan: 'monthly' | 'yearly', email?: string) {
-  return request<{ url: string }>('/api/billing/checkout', {
-    method: 'POST',
-    body: JSON.stringify({ plan, email }),
-  });
-}
-
-export function createPortal(email: string) {
-  return request<{ url: string }>('/api/billing/portal', {
-    method: 'POST',
-    body: JSON.stringify({ email }),
-  });
-}
-
-export function fetchBillingStatus(email: string) {
-  return request<{ status: string; plan: string; current_period_end?: string }>(
-    `/api/billing/status?email=${encodeURIComponent(email)}`,
-  );
 }
 
 export interface PartnerSiteApi {

@@ -1,17 +1,19 @@
 import hashlib
+import logging
+import threading
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import stripe
 
 from app.config import settings
 from app.data.partner_sites import PARTNER_SITES, PARTNER_SITES_BY_ID, get_partner_site
 from app.db.redis import cache_get, cache_set
 from app.db.session import get_db
-from app.models import Subscription
-from app.schemas import BookingRequest, CheckoutRequest, PortalRequest, RecommendationRequest
+from app.models import SyncRun
+from app.services.ndw_sync import sync_locations, sync_tariffs
+from app.schemas import BookingRequest, RecommendationRequest
 from app.services import partner_bookings as partner_booking_service
 from app.services.geocode import geocode_query
 from app.services.recommendation import build_recommendations
@@ -23,15 +25,60 @@ from app.services.station_query import (
     fetch_stations_in_bbox,
     search_stations_text,
 )
-from app.services.stripe_billing import create_checkout_session, create_portal_session
-from app.services.stripe_webhooks import handle_webhook_event
-
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
 async def health():
     return {"status": "ok", "app": settings.app_name}
+
+
+def _run_sync_jobs(dataset: str) -> None:
+    """Run the (synchronous) NDW sync jobs; logs and swallows errors so the
+    background thread never crashes the process. Errors are also persisted on
+    the SyncRun rows by the sync functions themselves."""
+    try:
+        if dataset in ("tariffs", "all"):
+            sync_tariffs()
+        if dataset in ("locations", "all"):
+            sync_locations()
+    except Exception:
+        logger.exception("Manual %s sync failed", dataset)
+
+
+@router.post("/admin/sync")
+async def admin_sync(
+    dataset: str = Query("all", pattern="^(locations|tariffs|all)$"),
+    x_admin_token: str = Header(""),
+):
+    if not settings.admin_sync_token:
+        raise HTTPException(503, "Admin sync token not configured")
+    if x_admin_token != settings.admin_sync_token:
+        raise HTTPException(401, "Invalid admin token")
+    threading.Thread(target=_run_sync_jobs, args=(dataset,), daemon=True).start()
+    return {"status": "started", "dataset": dataset}
+
+
+@router.get("/admin/sync/status")
+async def admin_sync_status(
+    x_admin_token: str = Header(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.admin_sync_token:
+        raise HTTPException(503, "Admin sync token not configured")
+    if x_admin_token != settings.admin_sync_token:
+        raise HTTPException(401, "Invalid admin token")
+    runs = (await db.scalars(select(SyncRun))).all()
+    return [
+        {
+            "dataset": r.dataset,
+            "last_success_at": r.last_success_at.isoformat() if r.last_success_at else None,
+            "records_processed": r.records_processed,
+            "error_message": r.error_message,
+        }
+        for r in runs
+    ]
 
 
 @router.get("/stations")
@@ -149,46 +196,6 @@ async def recommendations(body: RecommendationRequest, db: AsyncSession = Depend
     return cards
 
 
-@router.get("/monitor")
-async def monitor(
-    ids: str = Query(..., description="Comma-separated station IDs"),
-    db: AsyncSession = Depends(get_db),
-):
-    station_ids = [s.strip() for s in ids.split(",") if s.strip()]
-    cache_key = f"monitor:{','.join(sorted(station_ids))}"
-    cached = await cache_get(cache_key)
-    if cached:
-        return cached
-
-    stations = []
-    for sid in station_ids:
-        detail = await fetch_station_detail(db, sid)
-        if detail:
-            stations.append({
-                "id": detail["id"],
-                "name": detail.get("name"),
-                "statuses": detail.get("statuses"),
-                "availability_label": detail.get("availability_label"),
-                "pin_color": detail.get("pin_color"),
-                "energy_price": detail.get("energy_price"),
-                "latitude": detail["latitude"],
-                "longitude": detail["longitude"],
-            })
-
-    best_alternative = None
-    if station_ids:
-        alts = await fetch_alternatives(db, station_ids[0])
-        degraded = {"CHARGING", "RESERVED", "OUTOFORDER", "INOPERATIVE", "UNKNOWN"}
-        primary = stations[0] if stations else None
-        if primary and any(s in degraded for s in (primary.get("statuses") or [])):
-            available = [a for a in alts if a.get("pin_color") == "green"]
-            best_alternative = available[0] if available else (alts[0] if alts else None)
-
-    result = {"stations": stations, "best_alternative": best_alternative}
-    await cache_set(cache_key, result, 45)
-    return result
-
-
 @router.get("/filters/operators")
 async def operators(db: AsyncSession = Depends(get_db)):
     return await fetch_operators(db)
@@ -217,6 +224,12 @@ async def create_partner_bookings(body: BookingRequest, db: AsyncSession = Depen
         created = await partner_booking_service.create_bookings(db, body.email, site, slots)
     except partner_booking_service.CapacityError as e:
         raise HTTPException(409, str(e))
+    except SQLAlchemyError:
+        logger.exception("Partner booking database error")
+        raise HTTPException(503, "Booking service temporarily unavailable")
+    except Exception:
+        logger.exception("Partner booking unexpected error")
+        raise HTTPException(503, "Booking service temporarily unavailable")
     return [partner_booking_service.booking_to_dict(b, site["name"]) for b in created]
 
 
@@ -247,48 +260,3 @@ async def get_partner_savings(email: str = Query(...), db: AsyncSession = Depend
     return {"ytd_savings": total, "currency": "EUR", "bookings_count": count, "year": year}
 
 
-@router.post("/billing/checkout")
-async def billing_checkout(body: CheckoutRequest):
-    try:
-        url = create_checkout_session(body.plan, body.email)
-        return {"url": url}
-    except RuntimeError as e:
-        raise HTTPException(503, str(e))
-
-
-@router.post("/billing/portal")
-async def billing_portal(body: PortalRequest, db: AsyncSession = Depends(get_db)):
-    sub = await db.scalar(select(Subscription).where(Subscription.email == body.email))
-    if not sub or not sub.stripe_customer_id:
-        raise HTTPException(404, "No subscription found for this email")
-    try:
-        url = create_portal_session(sub.stripe_customer_id)
-        return {"url": url}
-    except RuntimeError as e:
-        raise HTTPException(503, str(e))
-
-
-@router.get("/billing/status")
-async def billing_status(email: str = Query(...), db: AsyncSession = Depends(get_db)):
-    sub = await db.scalar(select(Subscription).where(Subscription.email == email))
-    if not sub:
-        return {"status": "none", "plan": "none"}
-    return {
-        "status": sub.status,
-        "plan": sub.plan,
-        "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
-    }
-
-
-@router.post("/billing/webhook")
-async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature", "")
-    if not settings.stripe_webhook_secret:
-        raise HTTPException(503, "Webhook secret not configured")
-    try:
-        event = stripe.Webhook.construct_event(payload, sig, settings.stripe_webhook_secret)
-    except (ValueError, stripe.error.SignatureVerificationError) as e:
-        raise HTTPException(400, str(e))
-    await handle_webhook_event(db, event)
-    return {"received": True}

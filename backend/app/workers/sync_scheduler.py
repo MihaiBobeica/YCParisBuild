@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import func, select
 
 from app.config import settings
-from app.models import Connector, Tariff
+from app.models import Connector, Station, Tariff
 from app.services.ndw_sync import (
     SyncSession,
     backfill_connector_prices,
@@ -20,7 +20,7 @@ scheduler = BackgroundScheduler()
 
 
 def _bootstrap_sync() -> None:
-    """Ensure tariffs are loaded before serving price-dependent queries."""
+    """Ensure tariffs and locations are loaded before serving queries."""
     try:
         with SyncSession() as session:
             tariff_count = session.scalar(select(func.count()).select_from(Tariff)) or 0
@@ -36,6 +36,12 @@ def _bootstrap_sync() -> None:
                 )
             if missing and missing > 0:
                 backfill_connector_prices()
+
+        with SyncSession() as session:
+            station_count = session.scalar(select(func.count()).select_from(Station)) or 0
+        if station_count == 0:
+            logger.info("No stations in DB — running initial locations sync")
+            sync_locations()
     except Exception:
         logger.exception("Bootstrap sync failed")
 

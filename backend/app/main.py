@@ -1,6 +1,10 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,9 +16,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _run_migrations() -> None:
+    """Apply Alembic migrations (sync; run in a worker thread at startup)."""
+    backend_root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend_root / "alembic.ini"))
+    command.upgrade(cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting %s", settings.app_name)
+    try:
+        await asyncio.to_thread(_run_migrations)
+        logger.info("Database migrations applied")
+    except Exception:
+        logger.exception("Failed to apply database migrations on startup")
     start_scheduler()
     yield
 

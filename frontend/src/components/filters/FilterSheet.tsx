@@ -1,19 +1,14 @@
 import { useEffect, useState } from 'react';
 import { fetchOperators, type Filters } from '../../api/client';
 import { MenuSheet } from '../layout/MenuSheet';
+import { CONNECTOR_OPTIONS, type ConnectorPreference } from '../../hooks/useUserProfile';
 
 interface Props {
   filters: Filters;
+  connectorType: ConnectorPreference;
   onChange: (filters: Filters) => void;
   onClose: () => void;
 }
-
-const PRICE_TIERS: Array<{ label: string; value: number }> = [
-  { label: 'Free', value: 0 },
-  { label: '€', value: 0.35 },
-  { label: '€€', value: 0.55 },
-  { label: '€€€', value: 999 },
-];
 
 const POWER_TIERS: Array<{ label: string; value: number | undefined }> = [
   { label: 'Any', value: undefined },
@@ -30,13 +25,7 @@ const PARKING_TYPES: Array<{ label: string; value: string | undefined }> = [
   { label: 'Motorway', value: 'ALONG_MOTORWAY' },
 ];
 
-const ACCESS_CLASSES: Array<{ label: string; value: string | undefined }> = [
-  { label: 'All', value: undefined },
-  { label: 'Public', value: 'public' },
-  { label: 'Semi-public', value: 'semi-public' },
-];
-
-export function FilterSheet({ filters, onChange, onClose }: Props) {
+export function FilterSheet({ filters, connectorType, onChange, onClose }: Props) {
   const [operators, setOperators] = useState<string[]>([]);
 
   useEffect(() => {
@@ -44,6 +33,9 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
       .then(setOperators)
       .catch(() => setOperators([]));
   }, []);
+
+  const connectorLabel =
+    CONNECTOR_OPTIONS.find((c) => c.id === connectorType)?.label ?? null;
 
   return (
     <MenuSheet
@@ -55,23 +47,7 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         </button>
       }
     >
-      <p className="filter-section-label">Price</p>
-      <div className="segmented filter-segmented">
-        {PRICE_TIERS.map((tier, i) => (
-          <button
-            key={tier.label}
-            type="button"
-            className={filters.max_price === tier.value ? 'active' : ''}
-            onClick={() =>
-              onChange({ ...filters, max_price: tier.value, known_price_only: i > 0 })
-            }
-          >
-            {tier.label}
-          </button>
-        ))}
-      </div>
-
-      <p className="filter-section-label filter-section-label--spaced">Charging power</p>
+      <p className="filter-section-label">Charging power</p>
       <div className="segmented filter-segmented">
         {POWER_TIERS.map((tier) => (
           <button
@@ -82,20 +58,6 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
           >
             {tier.label}
             {tier.value ? ' kW' : ''}
-          </button>
-        ))}
-      </div>
-
-      <p className="filter-section-label filter-section-label--spaced">Access</p>
-      <div className="segmented filter-segmented">
-        {ACCESS_CLASSES.map((opt) => (
-          <button
-            key={opt.label}
-            type="button"
-            className={(filters.access_class ?? undefined) === opt.value ? 'active' : ''}
-            onClick={() => onChange({ ...filters, access_class: opt.value })}
-          >
-            {opt.label}
           </button>
         ))}
       </div>
@@ -146,18 +108,11 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         ))}
       </select>
 
-      <label className="filter-checkbox">
-        <input
-          type="checkbox"
-          checked={!!filters.known_price_only}
-          onChange={(e) => onChange({ ...filters, known_price_only: e.target.checked })}
-        />
-        Known price only
-      </label>
-
       <p className="filter-section-label filter-section-label--spaced">Connector type</p>
       <p className="field-hint filter-hint">
-        Set your car&apos;s plug in Account — the map only shows compatible chargers.
+        {connectorLabel
+          ? `Using your Account connector: ${connectorLabel}. The map only shows compatible chargers.`
+          : 'Set your car’s connector in Account — the map only shows compatible chargers.'}
       </p>
     </MenuSheet>
   );

@@ -44,15 +44,6 @@ class RecommendationRequest(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
 
 
-class CheckoutRequest(BaseModel):
-    plan: str = Field(pattern="^(monthly|yearly)$")
-    email: str | None = None
-
-
-class PortalRequest(BaseModel):
-    email: str
-
-
 class MonitorResponse(BaseModel):
     stations: list[dict[str, Any]]
     best_alternative: dict[str, Any] | None = None

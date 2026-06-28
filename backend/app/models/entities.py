@@ -4,8 +4,6 @@ from app.models import (
     PartnerBooking,
     Station,
     StatusDiff,
-    StripeEvent,
-    Subscription,
     SyncRun,
     Tariff,
     TariffPriceComponent,
@@ -21,7 +19,5 @@ __all__ = [
     "TariffRestriction",
     "StatusDiff",
     "SyncRun",
-    "Subscription",
-    "StripeEvent",
     "PartnerBooking",
 ]

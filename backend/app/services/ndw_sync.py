@@ -1,9 +1,13 @@
 import gzip
-import json
 import logging
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import ijson
 from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.orm import Session, sessionmaker, selectinload
 
@@ -27,11 +31,60 @@ sync_engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
 SyncSession = sessionmaker(sync_engine)
 
 
-def _download_gzip(url: str) -> bytes:
-    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
-        return resp.content
+@contextmanager
+def _stream_json_items(url: str, keys: tuple[str, ...] = ("data", "items")) -> Iterator[Iterator]:
+    """Download a gzipped OCPI JSON export to a temp file and yield an iterator
+    over its items without loading the whole dataset into memory.
+
+    The gz is streamed to disk (never held fully in RAM), decompressed
+    incrementally via `gzip.open`, and parsed item-by-item with `ijson`.
+    Handles both root-array exports and objects wrapping the array under a key.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".json.gz", delete=False)
+    try:
+        with httpx.Client(timeout=300.0, follow_redirects=True) as client:
+            with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                for chunk in resp.iter_bytes(chunk_size=1 << 20):
+                    tmp.write(chunk)
+        tmp.close()
+
+        prefix = _detect_array_prefix(tmp.name, keys)
+        with gzip.open(tmp.name, "rb") as fileobj:
+            yield ijson.items(fileobj, prefix)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+
+def _detect_array_prefix(path: str, keys: tuple[str, ...]) -> str:
+    """Find the ijson prefix for the array of records.
+
+    Root array -> "item". Object wrapper -> "<key>.item", preferring a known
+    wrapper key in `keys`, otherwise falling back to the first array-valued
+    top-level key (mirrors the previous best-effort JSON shape handling).
+    """
+    fallback: str | None = None
+    with gzip.open(path, "rb") as fileobj:
+        for event_prefix, event, _ in ijson.parse(fileobj):
+            if event == "start_array" and event_prefix == "":
+                return "item"
+            if event == "start_map" and event_prefix == "":
+                continue
+            # First array one level deep under the root object.
+            if event == "start_array" and event_prefix and "." not in event_prefix:
+                if event_prefix in keys:
+                    return f"{event_prefix}.item"
+                if fallback is None:
+                    fallback = f"{event_prefix}.item"
+            # Stop scanning once we are clearly past the top-level structure.
+            if event_prefix.count(".") > 1:
+                break
+    if fallback is not None:
+        return fallback
+    return f"{keys[0]}.item" if keys else "item"
 
 
 def _load_tariffs_map(session: Session, keys: set[str] | None = None) -> dict[str, dict]:
@@ -71,45 +124,25 @@ def _record_diff(session: Session, evse_id: str, field: str, old: str | None, ne
     session.add(StatusDiff(evse_id=evse_id, field=field, old_value=old, new_value=new))
 
 
-def _iter_json_items(decompressed: bytes, keys: tuple[str, ...] = ("data", "items")) -> list:
-    """Parse OCPI JSON which may be a root array or wrapped object."""
-    data = json.loads(decompressed)
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in keys:
-            if key in data and isinstance(data[key], list):
-                return data[key]
-        # Some exports nest under a single key
-        for val in data.values():
-            if isinstance(val, list) and val and isinstance(val[0], dict):
-                return val
-    return []
-
-
 def sync_locations() -> int:
     logger.info("Starting locations sync")
     count = 0
     try:
-        raw = _download_gzip(settings.ndw_locations_url)
-        decompressed = gzip.decompress(raw)
-        tariffs_map: dict[str, dict] = {}
-
         with SyncSession() as session:
             tariffs_map = _load_tariffs_map(session)
-            items = _iter_json_items(decompressed)
 
-            batch: list[dict] = []
-            for raw_loc in items:
-                if isinstance(raw_loc, dict):
-                    parsed = parse_location(raw_loc)
-                    if parsed:
-                        batch.append(parsed)
-                if len(batch) >= 200:
+            with _stream_json_items(settings.ndw_locations_url) as items:
+                batch: list[dict] = []
+                for raw_loc in items:
+                    if isinstance(raw_loc, dict):
+                        parsed = parse_location(raw_loc)
+                        if parsed:
+                            batch.append(parsed)
+                    if len(batch) >= 200:
+                        count += _upsert_locations_batch(session, batch, tariffs_map)
+                        batch = []
+                if batch:
                     count += _upsert_locations_batch(session, batch, tariffs_map)
-                    batch = []
-            if batch:
-                count += _upsert_locations_batch(session, batch, tariffs_map)
 
             run = session.scalar(select(SyncRun).where(SyncRun.dataset == "locations"))
             if not run:
@@ -209,56 +242,54 @@ def sync_tariffs() -> int:
     logger.info("Starting tariffs sync")
     count = 0
     try:
-        raw = _download_gzip(settings.ndw_tariffs_url)
-        decompressed = gzip.decompress(raw)
-
         with SyncSession() as session:
-            items = _iter_json_items(decompressed, keys=("data", "tariffs", "items"))
+            with _stream_json_items(
+                settings.ndw_tariffs_url, keys=("data", "tariffs", "items")
+            ) as items:
+                for raw_tariff in items:
+                    if not isinstance(raw_tariff, dict):
+                        continue
+                    parsed = parse_tariff(raw_tariff)
+                    if not parsed:
+                        continue
 
-            for raw_tariff in items:
-                if not isinstance(raw_tariff, dict):
-                    continue
-                parsed = parse_tariff(raw_tariff)
-                if not parsed:
-                    continue
+                    tariff = session.get(Tariff, parsed["id"])
+                    if not tariff:
+                        tariff = Tariff(id=parsed["id"])
+                        session.add(tariff)
+                    tariff.country_code = parsed["country_code"]
+                    tariff.party_id = parsed["party_id"]
+                    tariff.tariff_id = parsed["tariff_id"]
+                    tariff.currency = parsed["currency"]
+                    tariff.last_updated = parsed["last_updated"]
 
-                tariff = session.get(Tariff, parsed["id"])
-                if not tariff:
-                    tariff = Tariff(id=parsed["id"])
-                    session.add(tariff)
-                tariff.country_code = parsed["country_code"]
-                tariff.party_id = parsed["party_id"]
-                tariff.tariff_id = parsed["tariff_id"]
-                tariff.currency = parsed["currency"]
-                tariff.last_updated = parsed["last_updated"]
-
-                session.execute(
-                    delete(TariffPriceComponent).where(TariffPriceComponent.tariff_id == parsed["id"])
-                )
-                session.execute(
-                    delete(TariffRestriction).where(TariffRestriction.tariff_id == parsed["id"])
-                )
-                for pc in parsed["price_components"]:
-                    session.add(TariffPriceComponent(
-                        tariff_id=parsed["id"],
-                        type=pc["type"],
-                        price=pc["price"],
-                        vat=pc.get("vat"),
-                        step_size=pc.get("step_size"),
-                    ))
-                for r in parsed["restrictions"]:
-                    session.add(TariffRestriction(
-                        tariff_id=parsed["id"],
-                        start_time=r.get("start_time"),
-                        end_time=r.get("end_time"),
-                        day_of_week=r.get("day_of_week"),
-                        min_duration=r.get("min_duration"),
-                        max_duration=r.get("max_duration"),
-                    ))
-                count += 1
-                if count % 2000 == 0:
-                    session.commit()
-                    logger.info("Tariffs sync progress: %d", count)
+                    session.execute(
+                        delete(TariffPriceComponent).where(TariffPriceComponent.tariff_id == parsed["id"])
+                    )
+                    session.execute(
+                        delete(TariffRestriction).where(TariffRestriction.tariff_id == parsed["id"])
+                    )
+                    for pc in parsed["price_components"]:
+                        session.add(TariffPriceComponent(
+                            tariff_id=parsed["id"],
+                            type=pc["type"],
+                            price=pc["price"],
+                            vat=pc.get("vat"),
+                            step_size=pc.get("step_size"),
+                        ))
+                    for r in parsed["restrictions"]:
+                        session.add(TariffRestriction(
+                            tariff_id=parsed["id"],
+                            start_time=r.get("start_time"),
+                            end_time=r.get("end_time"),
+                            day_of_week=r.get("day_of_week"),
+                            min_duration=r.get("min_duration"),
+                            max_duration=r.get("max_duration"),
+                        ))
+                    count += 1
+                    if count % 2000 == 0:
+                        session.commit()
+                        logger.info("Tariffs sync progress: %d", count)
 
             run = session.scalar(select(SyncRun).where(SyncRun.dataset == "tariffs"))
             if not run:

@@ -12,10 +12,8 @@ import {
 import { AccountSheet } from '../components/account/AccountSheet';
 import { ChargerDetailSheet } from '../components/charger/ChargerDetailSheet';
 import { NavigationPicker } from '../components/charger/NavigationPicker';
-import { ReroutePrompt } from '../components/charger/ReroutePrompt';
 import { FilterSheet } from '../components/filters/FilterSheet';
-import { PartnerBookingSheet } from '../components/partner/PartnerBookingSheet';
-import type { PartnerSite } from '../data/partnerSites';
+import { partnerToStationDetail, type PartnerSite } from '../data/partnerSites';
 import { BottomDock, countActiveFilters } from '../components/layout/BottomDock';
 import { DesktopSidebar } from '../components/layout/DesktopSidebar';
 import { SearchSheet } from '../components/layout/SearchSheet';
@@ -23,13 +21,17 @@ import { ChargerMap } from '../components/map/ChargerMap';
 import type { MapNavTarget } from '../components/map/MapController';
 import type { SearchDestination } from '../components/map/SearchDestinationPin';
 import { RecommendationCards } from '../components/recommendations/RecommendationCards';
-import { useAvailabilityMonitor, useGeolocation } from '../hooks/useGeolocation';
 import { useMapStations } from '../hooks/useMapStations';
-import { useUserProfile } from '../hooks/useUserProfile';
+import type { UserProfile } from '../hooks/useUserProfile';
 import { isInNL } from '../utils/nlBounds';
 
-export function MapPage() {
-  const { profile, setProfile } = useUserProfile();
+interface MapPageProps {
+  profile: UserProfile;
+  setProfile: (patch: Partial<UserProfile>) => void;
+  signOut: () => void;
+}
+
+export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<StationDetail | null>(null);
   const [alternatives, setAlternatives] = useState<StationPin[]>([]);
@@ -45,14 +47,12 @@ export function MapPage() {
     Array<{ label: string; address: string; latitude: number; longitude: number }>
   >([]);
   const [showNav, setShowNav] = useState(false);
-  const [rerouteAlt, setRerouteAlt] = useState<StationPin | null>(null);
   const [recMode, setRecMode] = useState<'fastest' | 'cheapest' | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<PartnerSite | null>(null);
   const [savingsRefresh, setSavingsRefresh] = useState(0);
   const [navTarget, setNavTarget] = useState<MapNavTarget | null>(null);
   const [origin, setOrigin] = useState({ lat: 52.1326, lon: 5.2913 });
   const [toast, setToast] = useState<string | null>(null);
-  const backupIdsRef = useRef<string[]>([]);
   const searchDebounceRef = useRef<number | null>(null);
 
   const filters = useMemo<Filters>(() => {
@@ -62,7 +62,6 @@ export function MapPage() {
   }, [extraFilters, profile.connectorType]);
 
   const { stations, loading, loadStations } = useMapStations(filters, origin);
-  const { requestLocation, position } = useGeolocation();
 
   const flyTo = useCallback((lat: number, lon: number, zoom: number, key: string) => {
     setNavTarget({ lat, lon, zoom, key });
@@ -91,7 +90,6 @@ export function MapPage() {
         const [d, alts] = await Promise.all([fetchStationDetail(id), fetchAlternatives(id)]);
         setDetail(d);
         setAlternatives(alts);
-        backupIdsRef.current = alts.slice(0, 3).map((a) => a.id);
         flyTo(d.latitude, d.longitude, 14, `station-${id}`);
         await loadRecommendations(d.latitude, d.longitude);
       } catch {
@@ -108,21 +106,6 @@ export function MapPage() {
     },
     [flyTo],
   );
-
-  const handleDegraded = useCallback((alt: unknown) => {
-    setRerouteAlt(alt as StationPin);
-  }, []);
-
-  useAvailabilityMonitor(selectedId, backupIdsRef.current, handleDegraded);
-
-  useEffect(() => {
-    if (position) {
-      flyTo(position.lat, position.lon, 13, `geo-${Date.now()}`);
-      setSearchLabel('Near me');
-      setSearchDestination({ lat: position.lat, lon: position.lon, label: 'Near me' });
-      loadRecommendations(position.lat, position.lon);
-    }
-  }, [position, loadRecommendations, flyTo]);
 
   useEffect(() => {
     loadRecommendations(origin.lat, origin.lon);
@@ -163,15 +146,11 @@ export function MapPage() {
     [flyTo, loadRecommendations],
   );
 
-  const handleNearMe = () => {
-    requestLocation();
-    setShowSearch(false);
-  };
-
   const detailOpen = !!detail && !showNav;
+  const partnerOpen = !!selectedPartner && !showNav;
   const filterCount = countActiveFilters(extraFilters);
-  const menuOpen = showSearch || showAccount || showFilters || !!selectedPartner;
-  const chromeBottomHidden = menuOpen || detailOpen;
+  const menuOpen = showSearch || showAccount || showFilters;
+  const chromeBottomHidden = menuOpen || detailOpen || partnerOpen;
 
   return (
     <div className="app-shell">
@@ -192,7 +171,6 @@ export function MapPage() {
           <span><i className="legend-dot green" /> Available</span>
           <span><i className="legend-dot red" /> Unavailable</span>
           <span><i className="legend-dot orange" /> Unknown</span>
-          <span><i className="legend-dot partner" /> Partner · cheaper</span>
         </div>
 
         <div className="map-chrome map-chrome--mobile">
@@ -201,26 +179,11 @@ export function MapPage() {
               <span><i className="legend-dot green" /> Available</span>
               <span><i className="legend-dot red" /> Unavailable</span>
               <span><i className="legend-dot orange" /> Unknown</span>
-              <span><i className="legend-dot partner" /> Partner</span>
             </div>
           </div>
 
           <div className={`map-chrome-bottom${chromeBottomHidden ? ' map-chrome-bottom--hidden' : ''}`}>
-            {recommendations.length > 0 && (
-              <div className="map-chrome-rec">
-                <p className="mobile-rec-title">
-                  {searchDestination ? `Near ${searchLabel}` : 'Suggestions'}
-                </p>
-                <RecommendationCards cards={recommendations} onSelect={(c) => selectStation(c)} />
-              </div>
-            )}
-
             <div className="map-chrome-dock-wrap">
-              <div className="map-chrome-fab-row">
-                <button type="button" className="icon-btn" onClick={requestLocation} title="Locate me">
-                  ◎
-                </button>
-              </div>
               <BottomDock
                 searchLabel={searchLabel}
                 recMode={recMode}
@@ -229,7 +192,17 @@ export function MapPage() {
                 onAccountOpen={() => setShowAccount(true)}
                 onFilterOpen={() => setShowFilters(true)}
                 onRecChange={setRecMode}
-              />
+              >
+                {recommendations.length > 0 && (
+                  <div className="rec-panel">
+                    <div className="rec-panel-divider" />
+                    <p className="rec-panel-title">
+                      {searchDestination ? `Near ${searchLabel}` : 'Suggestions nearby'}
+                    </p>
+                    <RecommendationCards cards={recommendations} onSelect={(c) => selectStation(c)} />
+                  </div>
+                )}
+              </BottomDock>
             </div>
           </div>
         </div>
@@ -245,7 +218,6 @@ export function MapPage() {
           recommendations={recommendations}
           onSearchChange={handleSearch}
           onSearchPick={pickSearchResult}
-          onNearMe={handleNearMe}
           onAccountOpen={() => setShowAccount(true)}
           onFilterOpen={() => setShowFilters(true)}
           onRecChange={setRecMode}
@@ -258,7 +230,6 @@ export function MapPage() {
           results={searchResults}
           onQueryChange={handleSearch}
           onPick={pickSearchResult}
-          onNearMe={handleNearMe}
           onClose={() => setShowSearch(false)}
         />
       )}
@@ -268,21 +239,30 @@ export function MapPage() {
           profile={profile}
           onChange={setProfile}
           onClose={() => setShowAccount(false)}
+          onSignOut={signOut}
           savingsRefresh={savingsRefresh}
         />
       )}
 
       {showFilters && (
-        <FilterSheet filters={extraFilters} onChange={setExtraFilters} onClose={() => setShowFilters(false)} />
+        <FilterSheet
+          filters={extraFilters}
+          connectorType={profile.connectorType}
+          onChange={setExtraFilters}
+          onClose={() => setShowFilters(false)}
+        />
       )}
 
-      {selectedPartner && (
-        <PartnerBookingSheet
-          site={selectedPartner}
+      {partnerOpen && selectedPartner && (
+        <ChargerDetailSheet
+          station={partnerToStationDetail(selectedPartner)}
+          alternatives={[]}
+          partnerSite={selectedPartner}
           email={profile.email}
-          onSetEmail={(email) => setProfile({ email })}
           onBooked={() => setSavingsRefresh((n) => n + 1)}
+          onNavigate={() => setShowNav(true)}
           onClose={() => setSelectedPartner(null)}
+          onSelectAlternative={() => {}}
         />
       )}
 
@@ -299,18 +279,11 @@ export function MapPage() {
         />
       )}
 
-      {showNav && detail && (
-        <NavigationPicker lat={detail.latitude} lon={detail.longitude} onClose={() => setShowNav(false)} />
-      )}
-
-      {rerouteAlt && (
-        <ReroutePrompt
-          alternative={rerouteAlt}
-          onSwitch={() => {
-            selectStation(rerouteAlt);
-            setRerouteAlt(null);
-          }}
-          onDismiss={() => setRerouteAlt(null)}
+      {showNav && (detail || selectedPartner) && (
+        <NavigationPicker
+          lat={selectedPartner ? selectedPartner.latitude : detail!.latitude}
+          lon={selectedPartner ? selectedPartner.longitude : detail!.longitude}
+          onClose={() => setShowNav(false)}
         />
       )}
 

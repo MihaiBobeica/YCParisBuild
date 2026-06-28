@@ -1,15 +1,29 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { MapPage } from './pages/MapPage';
-import { SupportPage } from './pages/SupportPage';
-import { BillingSuccess } from './pages/BillingSuccess';
+import { LoginGate } from './components/auth/LoginGate';
+import { useUserProfile } from './hooks/useUserProfile';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
 export function App() {
+  const { profile, setProfile, signOut } = useUserProfile();
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<MapPage />} />
-        <Route path="/support" element={<SupportPage />} />
-        <Route path="/billing/success" element={<BillingSuccess />} />
+        <Route
+          path="/"
+          element={
+            profile.authed ? (
+              <MapPage profile={profile} setProfile={setProfile} signOut={signOut} />
+            ) : (
+              <LoginGate
+                clientId={GOOGLE_CLIENT_ID}
+                onLogin={({ email, name }) => setProfile({ email, name, authed: true })}
+              />
+            )
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Filters } from '../../api/client';
 import { DockHeader } from './DockHeader';
 
@@ -9,6 +10,7 @@ interface Props {
   onAccountOpen: () => void;
   onFilterOpen: () => void;
   onRecChange: (mode: 'fastest' | 'cheapest' | null) => void;
+  children?: ReactNode;
 }
 
 export function BottomDock({
@@ -19,6 +21,7 @@ export function BottomDock({
   onAccountOpen,
   onFilterOpen,
   onRecChange,
+  children,
 }: Props) {
   return (
     <div className="bottom-dock">
@@ -52,6 +55,8 @@ export function BottomDock({
           Cheapest
         </button>
       </div>
+
+      {children}
     </div>
   );
 }

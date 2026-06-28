@@ -161,29 +161,6 @@ class SyncRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
 
-class Subscription(Base):
-    __tablename__ = "subscriptions"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str | None] = mapped_column(String(255), index=True)
-    stripe_customer_id: Mapped[str | None] = mapped_column(String(128), unique=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(128), unique=True)
-    plan: Mapped[str] = mapped_column(String(16), default="none")
-    status: Mapped[str] = mapped_column(String(32), default="none")
-    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
-class StripeEvent(Base):
-    __tablename__ = "stripe_events"
-
-    id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
 class PartnerBooking(Base):
     __tablename__ = "partner_bookings"
 

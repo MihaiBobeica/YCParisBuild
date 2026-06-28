@@ -4,16 +4,20 @@ export type ConnectorPreference = 'IEC_62196_T2' | 'IEC_62196_T2_COMBO' | 'CHADE
 
 export interface UserProfile {
   email: string;
+  name: string;
   carName: string;
   connectorType: ConnectorPreference;
+  authed: boolean;
 }
 
 const STORAGE_KEY = 'paxor-user-profile';
 
 const DEFAULT: UserProfile = {
   email: '',
+  name: '',
   carName: '',
   connectorType: 'IEC_62196_T2_COMBO',
+  authed: false,
 };
 
 function load(): UserProfile {
@@ -37,7 +41,11 @@ export function useUserProfile() {
     setProfileState((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  return { profile, setProfile };
+  const signOut = useCallback(() => {
+    setProfileState((prev) => ({ ...prev, email: '', name: '', authed: false }));
+  }, []);
+
+  return { profile, setProfile, signOut };
 }
 
 export const CONNECTOR_OPTIONS: Array<{ id: ConnectorPreference; label: string; sub: string }> = [

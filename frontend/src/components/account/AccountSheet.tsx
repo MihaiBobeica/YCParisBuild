@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
+import { googleLogout } from '@react-oauth/google';
 import {
-  createCheckout,
-  createPortal,
   deletePartnerBooking,
-  fetchBillingStatus,
   fetchPartnerBookings,
   fetchPartnerSavings,
   type PartnerBooking,
@@ -16,6 +14,7 @@ interface Props {
   profile: UserProfile;
   onChange: (patch: Partial<UserProfile>) => void;
   onClose: () => void;
+  onSignOut: () => void;
   savingsRefresh?: number;
 }
 
@@ -34,10 +33,7 @@ function fmtSlot(b: PartnerBooking): string {
   return `${day} · ${t1}–${t2}`;
 }
 
-export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ status: string; plan: string } | null>(null);
-  const [billingError, setBillingError] = useState<string | null>(null);
+export function AccountSheet({ profile, onChange, onClose, onSignOut, savingsRefresh = 0 }: Props) {
   const [savings, setSavings] = useState<SavingsSummary | null>(null);
   const [bookings, setBookings] = useState<PartnerBooking[]>([]);
 
@@ -85,39 +81,6 @@ export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }:
     }
   };
 
-  const subscribe = async (plan: 'monthly' | 'yearly') => {
-    setLoading(true);
-    setBillingError(null);
-    try {
-      const { url } = await createCheckout(plan, profile.email || undefined);
-      window.location.href = url;
-    } catch (e) {
-      setBillingError(e instanceof Error ? e.message : 'Checkout failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const manage = async () => {
-    if (!profile.email) return;
-    setLoading(true);
-    setBillingError(null);
-    try {
-      const { url } = await createPortal(profile.email);
-      window.location.href = url;
-    } catch (e) {
-      setBillingError(e instanceof Error ? e.message : 'Portal failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkStatus = async () => {
-    if (!profile.email) return;
-    const s = await fetchBillingStatus(profile.email);
-    setStatus(s);
-  };
-
   return (
     <MenuSheet title="Your account" onClose={onClose}>
       <section className="savings-card">
@@ -132,9 +95,13 @@ export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }:
         </span>
       </section>
 
-      {bookings.length > 0 && (
-        <section className="account-section">
-          <label className="field-label">Your partner bookings</label>
+      <section className="account-section">
+        <label className="field-label">Your partner bookings</label>
+        {!profile.email ? (
+          <p className="field-hint">Add your email below to see and manage your reservations.</p>
+        ) : bookings.length === 0 ? (
+          <p className="field-hint">No bookings yet.</p>
+        ) : (
           <div className="booking-list">
             {bookings.map((b) => (
               <div key={b.id} className="booking-row">
@@ -158,18 +125,27 @@ export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }:
               </div>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <section className="account-section">
-        <label className="field-label">Email</label>
-        <input
-          className="field-input"
-          type="email"
-          placeholder="you@example.com"
-          value={profile.email}
-          onChange={(e) => onChange({ email: e.target.value })}
-        />
+        <label className="field-label">Signed in as</label>
+        <div className="account-identity">
+          <div className="account-identity-info">
+            {profile.name && <strong>{profile.name}</strong>}
+            <span>{profile.email || 'Not signed in'}</span>
+          </div>
+          <button
+            type="button"
+            className="account-signout"
+            onClick={() => {
+              googleLogout();
+              onSignOut();
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </section>
 
       <section className="account-section">
@@ -198,49 +174,6 @@ export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }:
             </button>
           ))}
         </div>
-      </section>
-
-      <section className="account-billing">
-        <h3>Support the app</h3>
-        <p className="field-hint">All features stay free. Subscribe to support development.</p>
-
-        <div className="billing-plans">
-          <div className="billing-plan">
-            <div>
-              <strong>Monthly</strong>
-              <span>$20 / mo</span>
-            </div>
-            <button type="button" className="billing-btn" disabled={loading} onClick={() => subscribe('monthly')}>
-              Subscribe
-            </button>
-          </div>
-          <div className="billing-plan">
-            <div>
-              <strong>Yearly</strong>
-              <span>$200 / yr</span>
-            </div>
-            <button type="button" className="billing-btn" disabled={loading} onClick={() => subscribe('yearly')}>
-              Subscribe
-            </button>
-          </div>
-        </div>
-
-        {profile.email && (
-          <div className="billing-actions">
-            <button type="button" className="dock-pill" onClick={checkStatus}>
-              Check status
-            </button>
-            <button type="button" className="dock-pill" onClick={manage}>
-              Manage
-            </button>
-          </div>
-        )}
-        {status && (
-          <p className="billing-status">
-            Status: <strong>{status.status}</strong> ({status.plan})
-          </p>
-        )}
-        {billingError && <p className="billing-error">{billingError}</p>}
       </section>
     </MenuSheet>
   );

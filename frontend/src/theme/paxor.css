@@ -246,58 +246,103 @@ input {
   border-color: #000 !important;
 }
 
-.rec-card {
-  min-width: 260px;
-  background: white;
-  border-radius: var(--paxor-radius-card);
-  padding: 16px;
-  box-shadow: var(--paxor-shadow-float);
-  scroll-snap-align: start;
+/* ── Suggestions panel (integrated under the dock / in sidebar) ── */
+.rec-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rec-panel-divider {
+  height: 1px;
+  background: #ececec;
+  margin: 12px -16px 10px;
+}
+
+.rec-panel-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--paxor-text);
+}
+
+.rec-panel-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cfcfcf transparent;
+}
+
+.rec-panel-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rec-panel-list::-webkit-scrollbar-thumb {
+  background: #cfcfcf;
+  border-radius: 999px;
+}
+
+.rec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
   text-align: left;
+  background: none;
   border: none;
+  border-radius: 12px;
+  padding: 10px 8px;
   cursor: pointer;
 }
 
-.rec-card-type {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--paxor-text-muted);
-  margin-bottom: 4px;
+.rec-row + .rec-row {
+  border-top: 1px solid #f1f1f1;
 }
 
-.rec-card-name {
-  font-weight: 700;
-  font-size: 16px;
-  margin-bottom: 4px;
+.rec-row:hover {
+  background: var(--paxor-bg-muted);
 }
 
-.rec-card-meta {
-  color: var(--paxor-text-muted);
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.rec-card-reason {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.rec-scroll {
+.rec-row-main {
   display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
 }
 
-.rec-scroll::-webkit-scrollbar {
-  height: 4px;
+.rec-row-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--paxor-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.rec-scroll::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 4px;
+.rec-row-specs {
+  font-size: 12.5px;
+  color: var(--paxor-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.rec-row-distance {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--paxor-text-muted);
 }
 
 .search-panel {
@@ -337,26 +382,6 @@ input {
 
 .search-result-item:hover {
   opacity: 0.7;
-}
-
-.support-page {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 32px 20px;
-}
-
-.plan-card {
-  border: 1px solid #eee;
-  border-radius: var(--paxor-radius-card);
-  padding: 24px;
-  margin-bottom: 16px;
-}
-
-.disclaimer {
-  color: var(--paxor-text-muted);
-  font-size: 14px;
-  line-height: 1.5;
-  margin-bottom: 24px;
 }
 
 .nav-row {
@@ -472,50 +497,6 @@ input {
   margin-top: 4px;
 }
 
-/* ── Reroute prompt ── */
-.reroute-sheet {
-  max-height: 46vh;
-}
-
-.reroute-title {
-  margin: 8px 0 4px;
-  font-size: 16px;
-}
-
-.reroute-sub {
-  margin: 0 0 14px;
-  color: var(--paxor-text-muted);
-}
-
-.reroute-alt {
-  padding: 14px;
-  background: var(--paxor-bg-muted);
-  border-radius: var(--paxor-radius-card);
-  margin-bottom: 16px;
-}
-
-.reroute-alt-meta {
-  color: var(--paxor-text-muted);
-  font-size: 13px;
-  margin-top: 4px;
-}
-
-.reroute-switch {
-  width: 100%;
-  margin-bottom: 8px;
-}
-
-.reroute-keep {
-  width: 100%;
-  padding: 13px;
-  background: var(--paxor-bg-muted);
-  border: none;
-  border-radius: var(--paxor-radius-pill);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .top-bar {
   display: flex;
   align-items: center;
@@ -548,17 +529,13 @@ input {
 
 .map-chrome-top,
 .map-chrome-bottom,
-.map-chrome-rec,
-.map-chrome-dock-wrap,
-.map-chrome-fab-row {
+.map-chrome-dock-wrap {
   pointer-events: none;
 }
 
 .map-chrome-top > *,
 .map-chrome-bottom > *,
-.map-chrome-rec > *,
-.map-chrome-dock-wrap > *,
-.map-chrome-fab-row > * {
+.map-chrome-dock-wrap > * {
   pointer-events: auto;
 }
 
@@ -588,21 +565,10 @@ input {
   pointer-events: none;
 }
 
-.map-chrome-rec {
-  max-height: 32vh;
-  width: 100%;
-}
-
 .map-chrome-dock-wrap {
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-}
-
-.map-chrome-fab-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--paxor-chrome-gap);
 }
 
 .map-zoom-controls {
@@ -757,14 +723,40 @@ input {
   width: 100%;
   max-width: 520px;
   max-height: 88vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   background: white;
   border-radius: 28px 28px 0 0;
   padding: 12px 20px calc(32px + env(safe-area-inset-bottom, 0px));
   box-shadow: var(--paxor-shadow-sheet);
   animation: sheet-slide-up 250ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* Only the content scrolls; handle + header stay put, with an integrated bar. */
+.menu-sheet-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-right: -10px;
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #cfcfcf transparent;
+}
+
+.menu-sheet-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.menu-sheet-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.menu-sheet-body::-webkit-scrollbar-thumb {
+  background: #cfcfcf;
+  border-radius: 999px;
 }
 
 .menu-sheet-header {
@@ -921,20 +913,6 @@ input {
   outline: none;
 }
 
-.near-me-btn {
-  width: 100%;
-  border: none;
-  background: var(--paxor-bg-muted);
-  border-radius: var(--paxor-radius-pill);
-  padding: 12px;
-  font-weight: 600;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
 .search-results-list {
   display: flex;
   flex-direction: column;
@@ -974,9 +952,115 @@ input {
   padding: 12px 4px;
 }
 
-/* ── Account + billing ── */
+/* ── Login gate (Google Sign-In) ── */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 0%, #f7f7fb 0%, #ececf2 100%);
+}
+
+.login-gate-card {
+  width: 100%;
+  max-width: 360px;
+  background: white;
+  border-radius: var(--paxor-radius-card);
+  box-shadow: var(--paxor-shadow-float);
+  padding: 32px 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.login-gate-wordmark {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--paxor-text);
+  margin-bottom: 20px;
+}
+
+.login-gate-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.login-gate-sub {
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paxor-text-muted);
+}
+
+.login-gate-button {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.login-gate-config {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--paxor-text-muted);
+}
+
+.login-gate-config code {
+  background: var(--paxor-bg-muted);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ── Account ── */
 .account-section {
   margin-bottom: 20px;
+}
+
+.account-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid #eee;
+  border-radius: 14px;
+}
+
+.account-identity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-identity-info strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.account-identity-info span {
+  font-size: 13px;
+  color: var(--paxor-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-signout {
+  flex-shrink: 0;
+  border: none;
+  background: var(--paxor-bg-muted);
+  color: var(--paxor-text);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: var(--paxor-radius-pill);
+  cursor: pointer;
 }
 
 .field-label {
@@ -1029,64 +1113,6 @@ input {
 .connector-card.selected {
   border-color: #000;
   background: #fafafa;
-}
-
-.account-billing {
-  margin-top: 8px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
-}
-
-.account-billing h3 {
-  margin: 0 0 4px;
-  font-size: 17px;
-}
-
-.billing-plans {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 14px 0;
-}
-
-.billing-plan {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border: 1px solid #eee;
-  border-radius: 16px;
-}
-
-.billing-plan strong {
-  display: block;
-}
-
-.billing-plan span {
-  font-size: 13px;
-  color: var(--paxor-text-muted);
-}
-
-.billing-btn {
-  border: none;
-  background: #000;
-  color: #fff;
-  border-radius: var(--paxor-radius-pill);
-  padding: 10px 18px;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.billing-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.billing-status {
-  font-size: 14px;
-  color: var(--paxor-text-muted);
-  margin-top: 10px;
 }
 
 /* ── Map UX ── */
@@ -1297,6 +1323,16 @@ input {
   }
 }
 
+/* ── Detail sheet tabs (partner: Details / Book slot) ── */
+.detail-tabs {
+  margin-bottom: 16px;
+}
+
+.partner-booking-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Partner booking sheet ── */
 .partner-sheet-head {
   display: flex;
@@ -1331,10 +1367,6 @@ input {
   font-weight: 800;
   border-radius: var(--paxor-radius-pill);
   white-space: nowrap;
-}
-
-.partner-email-row {
-  margin-bottom: 16px;
 }
 
 .partner-loading {
@@ -1595,20 +1627,6 @@ input {
   box-shadow: var(--paxor-shadow-float);
 }
 
-.billing-error {
-  margin: 10px 0 0;
-  color: var(--paxor-pin-occupied);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.mobile-rec-title {
-  margin: 0 0 6px 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--paxor-text-muted);
-}
-
 /* ── Layout: mobile first ── */
 .desktop-sidebar {
   display: none;
@@ -1679,13 +1697,6 @@ input {
     overflow-y: auto;
   }
 
-  .near-me-btn--compact {
-    margin-top: 8px;
-    margin-bottom: 0;
-    padding: 8px;
-    font-size: 13px;
-  }
-
   .sidebar-destination {
     padding: 12px 20px;
     background: #f0f7ff;
@@ -1729,14 +1740,10 @@ input {
   .sidebar-rec-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
   }
 
-  .rec-card--vertical {
-    width: 100%;
-    min-width: unset;
-    border: 1px solid #eee;
-    box-shadow: none;
+  .sidebar-rec-list .rec-row {
+    padding: 12px 8px;
   }
 
   .map-zoom-controls {
@@ -1769,12 +1776,13 @@ input {
 }
 
 @media (max-width: 767px) {
-  .map-chrome-rec {
-    padding: 0;
-  }
-
   .bottom-dock {
     padding: 12px 14px 14px;
+  }
+
+  /* Suggestions scroll within the dock panel; keeps everything as one card. */
+  .rec-panel {
+    max-height: 34vh;
   }
 
   .map-legend {

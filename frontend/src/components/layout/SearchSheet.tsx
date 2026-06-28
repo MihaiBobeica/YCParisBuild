@@ -12,11 +12,10 @@ interface Props {
   results: SearchResult[];
   onQueryChange: (q: string) => void;
   onPick: (r: SearchResult) => void;
-  onNearMe: () => void;
   onClose: () => void;
 }
 
-export function SearchSheet({ query, results, onQueryChange, onPick, onNearMe, onClose }: Props) {
+export function SearchSheet({ query, results, onQueryChange, onPick, onClose }: Props) {
   return (
     <MenuSheet title="Search" onClose={onClose}>
       <div className="search-input-wrap">
@@ -31,10 +30,6 @@ export function SearchSheet({ query, results, onQueryChange, onPick, onNearMe, o
           onChange={(e) => onQueryChange(e.target.value)}
         />
       </div>
-
-      <button type="button" className="near-me-btn" onClick={onNearMe}>
-        <span>◎</span> Near me
-      </button>
 
       <div className="search-results-list">
         {results.length === 0 && query.length >= 2 && (

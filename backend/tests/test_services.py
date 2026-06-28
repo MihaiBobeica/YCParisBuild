@@ -210,6 +210,96 @@ def test_generate_slots_shape():
         assert start < end
 
 
+async def test_slot_availability_full_grid_when_no_bookings():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services.partner_bookings import slot_availability
+
+    result = MagicMock()
+    result.all = MagicMock(return_value=[])
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=result)
+
+    site = {"id": "partner-asr-utrecht", "total_slots": 50}
+    out = await slot_availability(session, site)
+
+    assert len(out) > 0
+    assert all(s["remaining"] == 50 and s["booked"] == 0 for s in out)
+
+
+async def test_slot_availability_resilient_to_missing_table():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from sqlalchemy.exc import ProgrammingError
+
+    from app.services.partner_bookings import slot_availability
+
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=ProgrammingError("stmt", {}, Exception("no table")))
+    session.rollback = AsyncMock()
+
+    site = {"id": "partner-asr-utrecht", "total_slots": 50}
+    out = await slot_availability(session, site)
+
+    # Missing partner_bookings table must degrade to a full free grid, not empty.
+    assert len(out) > 0
+    assert all(s["remaining"] == 50 for s in out)
+    session.rollback.assert_awaited()
+
+
+async def test_create_bookings_skips_duplicate_without_dropping_siblings():
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.partner_bookings import create_bookings
+
+    site = {
+        "id": "partner-asr-utrecht",
+        "energy_price": 0.20,
+        "currency": "EUR",
+        "total_slots": 50,
+        "latitude": 52.0,
+        "longitude": 5.0,
+        "connector_types": ["IEC_62196_T2"],
+        "max_power_kw": 41.0,
+    }
+    slots = [
+        (datetime(2026, 7, 1, 8, tzinfo=timezone.utc), datetime(2026, 7, 1, 10, tzinfo=timezone.utc)),
+        (datetime(2026, 7, 1, 10, tzinfo=timezone.utc), datetime(2026, 7, 1, 12, tzinfo=timezone.utc)),
+    ]
+
+    session = MagicMock()
+    session.scalar = AsyncMock(return_value=0)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+
+    attempt = 0
+
+    class NestedCM:
+        async def __aenter__(self):
+            nonlocal attempt
+            attempt += 1
+            if attempt == 2:
+                raise IntegrityError("stmt", {}, Exception("duplicate slot"))
+            return None
+
+        async def __aexit__(self, *args):
+            return False
+
+    session.begin_nested = MagicMock(return_value=NestedCM())
+
+    with patch(
+        "app.services.partner_bookings.compute_nearby_avg_price",
+        new=AsyncMock(return_value=0.41),
+    ):
+        created = await create_bookings(session, "test@example.com", site, slots)
+
+    assert len(created) == 1
+    session.commit.assert_awaited_once()
+
+
 def test_generate_slots_drops_past_blocks():
     from datetime import datetime, timezone
 

@@ -19,7 +19,6 @@ interface Props {
   recommendations: RecommendationCard[];
   onSearchChange: (q: string) => void;
   onSearchPick: (r: SearchResult) => void;
-  onNearMe: () => void;
   onAccountOpen: () => void;
   onFilterOpen: () => void;
   onRecChange: (mode: 'fastest' | 'cheapest' | null) => void;
@@ -36,7 +35,6 @@ export function DesktopSidebar({
   recommendations,
   onSearchChange,
   onSearchPick,
-  onNearMe,
   onAccountOpen,
   onFilterOpen,
   onRecChange,
@@ -64,9 +62,6 @@ export function DesktopSidebar({
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </div>
-        <button type="button" className="near-me-btn near-me-btn--compact" onClick={onNearMe}>
-          ◎ Near me
-        </button>
         {searchResults.length > 0 && (
           <div className="sidebar-search-results">
             {searchResults.map((r, i) => (

@@ -19,7 +19,7 @@ export function MenuSheet({ title, onClose, children, headerAction }: Props) {
           <h2 className="menu-sheet-title">{title}</h2>
           {headerAction && <div className="menu-sheet-action">{headerAction}</div>}
         </div>
-        {children}
+        <div className="menu-sheet-body">{children}</div>
       </div>
     </div>
   );

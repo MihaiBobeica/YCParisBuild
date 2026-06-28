@@ -38,10 +38,8 @@ class Settings(BaseSettings):
     app_name: str = "paxor"
     tz: str = "Europe/Amsterdam"
 
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
-    stripe_price_monthly: str = ""
-    stripe_price_yearly: str = ""
+    # Shared secret guarding the manual sync admin endpoints. Empty = disabled.
+    admin_sync_token: str = ""
 
     # NL bounds
     nl_min_lat: float = 50.75

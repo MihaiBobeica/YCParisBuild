@@ -192,14 +192,13 @@ async def create_bookings(
             session_savings=savings_per_session,
             currency=currency,
         )
-        session.add(booking)
         try:
-            await session.flush()
+            async with session.begin_nested():
+                session.add(booking)
+            created.append(booking)
         except IntegrityError:
-            # Same email already holds this slot; skip the duplicate silently.
-            await session.rollback()
+            # Same email already holds this slot; skip without rolling back siblings.
             continue
-        created.append(booking)
 
     await session.commit()
     return created
