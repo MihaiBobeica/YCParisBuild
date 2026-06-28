@@ -101,12 +101,11 @@ def build_recommendations(
 
     best = max(nearby, key=overall_score, default=None)
     if best:
-        price_str = f"€{best['energy_price']:.2f}/kWh" if best.get("energy_price") else "price unknown"
         add_rec(
             best,
             "best_overall",
-            f"Best overall: {best['travel_minutes']} min away, {best.get('availability_label', 'unknown')}, "
-            f"{price_str}, {best.get('max_power_kw') or '?'} kW.",
+            f"Best overall: {best['travel_minutes']} min away, {best.get('availability_label', 'available')}, "
+            f"€{best['energy_price']:.2f}/kWh, {best.get('max_power_kw') or '?'} kW.",
         )
 
     cheap_candidates = [

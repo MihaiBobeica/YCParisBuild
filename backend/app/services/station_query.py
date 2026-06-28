@@ -115,8 +115,7 @@ def _station_summary(
         (e.last_updated for e in station.evses if e.last_updated),
         default=station.last_updated,
     )
-    has_partial = energy_price is None and bool(connectors)
-    pin_color = aggregate_pin_color(statuses, has_partial)
+    pin_color = aggregate_pin_color(statuses)
 
     summary: dict[str, Any] = {
         "id": station.id,
@@ -250,8 +249,6 @@ async def fetch_stations_in_bbox(
         results = [r for r in results if r["pin_color"] == "green"]
     elif filters.get("availability") == "unavailable":
         results = [r for r in results if r["pin_color"] == "red"]
-    if filters.get("known_price_only"):
-        results = [r for r in results if r["energy_price"] is not None]
     if filters.get("max_price") is not None:
         results = [r for r in results if r["energy_price"] is not None and r["energy_price"] <= filters["max_price"]]
     if filters.get("min_kw"):

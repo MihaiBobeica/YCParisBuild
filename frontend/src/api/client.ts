@@ -95,7 +95,6 @@ export interface Filters {
   operator?: string;
   parking_type?: string;
   access_class?: string;
-  known_price_only?: boolean;
 }
 
 export function fetchStations(

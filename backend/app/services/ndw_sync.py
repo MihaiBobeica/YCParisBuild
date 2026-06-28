@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import ijson
-from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy import create_engine, delete, exists, func, select, text
 from sqlalchemy.orm import Session, sessionmaker, selectinload
 
 from app.config import settings
@@ -154,6 +154,12 @@ def sync_locations() -> int:
             run.records_processed = count
             run.error_message = None
             session.commit()
+
+            # Only purge once tariffs exist; otherwise a fresh DB (no tariffs yet)
+            # would have every just-synced station deleted.
+            tariff_count = session.scalar(select(func.count()).select_from(Tariff)) or 0
+            if tariff_count > 0:
+                purge_priceless_stations()
         logger.info("Locations sync complete: %d stations", count)
         return count
     except Exception as e:
@@ -356,7 +362,36 @@ def backfill_connector_prices() -> int:
             logger.info("Price backfill progress: last_id=%s updated=%d", last_id, updated)
 
     logger.info("Connector price backfill complete: %d updated", updated)
+    purge_priceless_stations()
     return updated
+
+
+def purge_priceless_stations() -> int:
+    """Delete connectors with no resolved electricity price, then any EVSEs and
+    stations left without connectors. We never store chargers whose price is
+    unknown, so the app only ever deals with priced stations.
+
+    Returns the number of stations removed.
+    """
+    logger.info("Purging priceless stations")
+    with SyncSession() as session:
+        session.execute(
+            delete(Connector).where(Connector.resolved_energy_price.is_(None))
+        )
+        session.execute(
+            delete(Evse).where(
+                ~exists(select(1).where(Connector.evse_id == Evse.id))
+            )
+        )
+        result = session.execute(
+            delete(Station).where(
+                ~exists(select(1).where(Connector.station_id == Station.id))
+            )
+        )
+        session.commit()
+        removed = result.rowcount or 0
+    logger.info("Purged %d priceless stations", removed)
+    return removed
 
 
 def purge_old_diffs() -> int:

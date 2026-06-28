@@ -111,7 +111,6 @@ async def list_stations(
     operator: str | None = None,
     parking_type: str | None = None,
     access_class: str | None = None,
-    known_price_only: bool = False,
     map_limit: int = Query(250, ge=1, le=500),
     zoom: float | None = Query(None, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
@@ -119,7 +118,7 @@ async def list_stations(
     zoom_int = int(round(zoom)) if zoom is not None else None
     cache_key = hashlib.md5(
         f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{connector_type}:"
-        f"{min_kw}:{operator}:{known_price_only}:{map_limit}:{zoom_int}".encode()
+        f"{min_kw}:{operator}:{map_limit}:{zoom_int}".encode()
     ).hexdigest()
     cached = await cache_get(f"map:bbox:v3:{cache_key}")
     if cached:
@@ -133,7 +132,6 @@ async def list_stations(
         "operator": operator,
         "parking_type": parking_type,
         "access_class": access_class,
-        "known_price_only": known_price_only,
     }
     try:
         results = await fetch_stations_in_bbox(

@@ -20,7 +20,7 @@ function availabilityCapacity(label: string | undefined): string | null {
 }
 
 function buildChip(s: StationPin): { line1: string; line2: string } {
-  const price = s.energy_price != null ? `€${s.energy_price.toFixed(2)}/kWh` : 'Price unknown';
+  const price = `€${(s.energy_price ?? 0).toFixed(2)}/kWh`;
   const power = s.max_power_kw != null ? `${Math.round(s.max_power_kw)} kW` : null;
   const cap = availabilityCapacity(s.availability_label);
   const parts = [power, cap].filter(Boolean) as string[];

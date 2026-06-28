@@ -85,11 +85,11 @@ def test_tariff_join():
 
 
 def test_pin_color_green():
-    assert aggregate_pin_color(["AVAILABLE"], False) == "green"
+    assert aggregate_pin_color(["AVAILABLE"]) == "green"
 
 
 def test_pin_color_red():
-    assert aggregate_pin_color(["CHARGING", "CHARGING"], False) == "red"
+    assert aggregate_pin_color(["CHARGING", "CHARGING"]) == "red"
 
 
 def test_availability_summary():

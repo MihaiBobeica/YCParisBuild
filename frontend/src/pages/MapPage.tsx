@@ -172,7 +172,6 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
         <div className="map-legend map-legend--desktop">
           <span><i className="legend-dot green" /> Available</span>
           <span><i className="legend-dot red" /> Unavailable</span>
-          <span><i className="legend-dot orange" /> Unknown</span>
         </div>
 
         <div className="map-chrome map-chrome--mobile">
@@ -180,7 +179,6 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
             <div className="map-legend">
               <span><i className="legend-dot green" /> Available</span>
               <span><i className="legend-dot red" /> Unavailable</span>
-              <span><i className="legend-dot orange" /> Unknown</span>
             </div>
           </div>
 

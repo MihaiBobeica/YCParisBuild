@@ -70,6 +70,5 @@ export function countActiveFilters(filters: Filters): number {
   if (filters.operator) n++;
   if (filters.parking_type) n++;
   if (filters.access_class) n++;
-  if (filters.known_price_only) n++;
   return n;
 }
