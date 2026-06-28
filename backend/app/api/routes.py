@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import threading
 
@@ -9,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.data.partner_sites import PARTNER_SITES, PARTNER_SITES_BY_ID, get_partner_site
-from app.db.redis import cache_get, cache_set
+from app.db import local_cache
+from app.db.redis import cache_get, cache_get_raw, cache_set, cache_set_raw
 from app.db.session import get_db
 from app.models import Station, SyncRun
 from app.services.ndw_sync import sync_locations, sync_tariffs
@@ -27,6 +29,11 @@ from app.services.station_query import (
 )
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+# In-process cache TTL for map-pin payloads. Kept short so it can never serve
+# data staler than the 180s Redis layer behind it, while still absorbing the
+# burst of identical viewport requests during a pan/zoom interaction.
+_LOCAL_PIN_TTL = 30
 
 
 @router.get("/health")
@@ -129,9 +136,23 @@ async def list_stations(
         f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{connector_type}:"
         f"{min_kw}:{operator}:{parking_type}:{access_class}:{map_limit}:{zoom_int}".encode()
     ).hexdigest()
-    cached = await cache_get(f"map:bbox:v8:{cache_key}")
-    if cached:
-        return cached
+    redis_key = f"map:bbox:v8:{cache_key}"
+
+    # Three-tier read path for the map-pin hot loop. The payload is cached and
+    # served as a raw JSON string end-to-end, so a cache hit never deserializes
+    # into ~250 dicts and re-serializes — a meaningful CPU/RAM saving on the
+    # 1-CPU / 2GB box where this endpoint dominates traffic.
+    #   1. in-process micro-cache  → no I/O, no decode (hottest viewports)
+    #   2. Redis                   → shared across instances, no decode
+    #   3. Postgres spatial query  → compute, then populate both caches
+    raw = local_cache.get(redis_key)
+    if raw is not None:
+        return Response(content=raw, media_type="application/json")
+
+    raw = await cache_get_raw(redis_key)
+    if raw is not None:
+        local_cache.set(redis_key, raw, _LOCAL_PIN_TTL)
+        return Response(content=raw, media_type="application/json")
 
     filters = {
         "availability": availability,
@@ -149,31 +170,35 @@ async def list_stations(
     except ValueError as e:
         raise HTTPException(400, str(e))
 
+    raw = json.dumps(results, default=str)
     if results:
-        await cache_set(f"map:bbox:v8:{cache_key}", results, 180)
-    return results
+        await cache_set_raw(redis_key, raw, 180)
+        local_cache.set(redis_key, raw, _LOCAL_PIN_TTL)
+    return Response(content=raw, media_type="application/json")
 
 
 @router.get("/stations/{station_id}")
 async def get_station(station_id: str, db: AsyncSession = Depends(get_db)):
-    cached = await cache_get(f"station:{station_id}")
-    if cached:
-        return cached
+    raw = await cache_get_raw(f"station:{station_id}")
+    if raw is not None:
+        return Response(content=raw, media_type="application/json")
     detail = await fetch_station_detail(db, station_id)
     if not detail:
         raise HTTPException(404, "Station not found")
-    await cache_set(f"station:{station_id}", detail, 45)
-    return detail
+    raw = json.dumps(detail, default=str)
+    await cache_set_raw(f"station:{station_id}", raw, 45)
+    return Response(content=raw, media_type="application/json")
 
 
 @router.get("/stations/{station_id}/alternatives")
 async def get_alternatives(station_id: str, db: AsyncSession = Depends(get_db)):
-    cached = await cache_get(f"backups:{station_id}")
-    if cached:
-        return cached
+    raw = await cache_get_raw(f"backups:{station_id}")
+    if raw is not None:
+        return Response(content=raw, media_type="application/json")
     alts = await fetch_alternatives(db, station_id)
-    await cache_set(f"backups:{station_id}", alts, 60)
-    return alts
+    raw = json.dumps(alts, default=str)
+    await cache_set_raw(f"backups:{station_id}", raw, 60)
+    return Response(content=raw, media_type="application/json")
 
 
 @router.get("/search")

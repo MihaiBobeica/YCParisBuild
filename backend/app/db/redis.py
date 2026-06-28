@@ -37,6 +37,31 @@ async def cache_set(key: str, value: Any, ttl: int) -> None:
         logger.warning("Redis cache_set failed for %s", key, exc_info=True)
 
 
+async def cache_get_raw(key: str) -> str | None:
+    """Return the stored JSON string verbatim (no `json.loads`).
+
+    Hot endpoints (the map-pin bbox query) cache an already-serialized JSON
+    payload and stream it straight back to the client, so they never pay to
+    deserialize into Python objects and then re-serialize. This removes a large
+    transient allocation per cache hit on the 1-CPU / 2GB box.
+    """
+    try:
+        r = await get_redis()
+        return await r.get(key)
+    except Exception:
+        logger.warning("Redis cache_get_raw failed for %s", key, exc_info=True)
+        return None
+
+
+async def cache_set_raw(key: str, raw: str, ttl: int) -> None:
+    """Store an already-serialized JSON string (companion to ``cache_get_raw``)."""
+    try:
+        r = await get_redis()
+        await r.set(key, raw, ex=ttl)
+    except Exception:
+        logger.warning("Redis cache_set_raw failed for %s", key, exc_info=True)
+
+
 async def cache_delete_pattern(pattern: str) -> None:
     r = await get_redis()
     async for key in r.scan_iter(match=pattern):
