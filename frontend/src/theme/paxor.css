@@ -10,7 +10,7 @@
   --paxor-pin-limited: #f97316;
   --paxor-pin-occupied: #ef4444;
   --paxor-pin-unknown: #9ca3af;
-  --paxor-partner: #f59e0b;
+  --paxor-partner: #15803d;
   --paxor-radius-pill: 9999px;
   --paxor-radius-card: 24px;
   --paxor-radius-sheet: 32px;
@@ -1255,13 +1255,13 @@ input {
   margin-bottom: 6px;
   padding: 4px 9px;
   background: var(--paxor-partner);
-  color: #3a2700;
+  color: #ffffff;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: -0.2px;
   border-radius: 9px;
   white-space: nowrap;
-  box-shadow: 0 3px 10px rgba(180, 120, 0, 0.45);
+  box-shadow: 0 3px 10px rgba(7, 60, 30, 0.45);
   z-index: 3;
 }
 
@@ -1314,7 +1314,7 @@ input {
   flex-shrink: 0;
   padding: 6px 10px;
   background: var(--paxor-partner);
-  color: #3a2700;
+  color: #ffffff;
   font-size: 12px;
   font-weight: 800;
   border-radius: var(--paxor-radius-pill);
@@ -1593,9 +1593,6 @@ input {
     display: flex;
     flex-direction: row;
     height: 100vh;
-    max-width: 1600px;
-    margin: 0 auto;
-    box-shadow: 0 0 0 1px #eee;
   }
 
   .map-pane {

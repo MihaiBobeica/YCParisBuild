@@ -4,10 +4,12 @@ from typing import Any
 
 def map_limit_for_zoom(zoom: int) -> int:
     """How many pins to return for a given map zoom level."""
+    if zoom >= 16:
+        return 320
     if zoom >= 15:
-        return 180
+        return 240
     if zoom >= 13:
-        return 140
+        return 170
     if zoom >= 11:
         return 100
     if zoom >= 9:
@@ -18,10 +20,12 @@ def map_limit_for_zoom(zoom: int) -> int:
 def _cell_size_for_zoom(zoom: int | None) -> float:
     """Grid cell size in degrees — depends on zoom only, not viewport."""
     z = zoom if zoom is not None else 10
+    if z >= 17:
+        return 0.0015
     if z >= 15:
-        return 0.006
+        return 0.0035
     if z >= 13:
-        return 0.01
+        return 0.008
     if z >= 11:
         return 0.022
     if z >= 9:

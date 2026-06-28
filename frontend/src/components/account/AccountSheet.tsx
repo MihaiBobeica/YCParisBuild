@@ -194,7 +194,7 @@ export function AccountSheet({ profile, onChange, onClose, savingsRefresh = 0 }:
               onClick={() => onChange({ connectorType: profile.connectorType === opt.id ? '' : opt.id })}
             >
               <strong>{opt.label}</strong>
-              <span>{opt.sub}</span>
+              {opt.sub && <span>{opt.sub}</span>}
             </button>
           ))}
         </div>

@@ -14,7 +14,6 @@ interface Props {
   searchText: string;
   searchResults: SearchResult[];
   searchDestination: { label: string } | null;
-  connectorLabel: string;
   recMode: 'fastest' | 'cheapest' | null;
   activeFilterCount: number;
   recommendations: RecommendationCard[];
@@ -32,7 +31,6 @@ export function DesktopSidebar({
   searchText,
   searchResults,
   searchDestination,
-  connectorLabel,
   recMode,
   activeFilterCount,
   recommendations,
@@ -91,7 +89,6 @@ export function DesktopSidebar({
       )}
 
       <div className="sidebar-rec-controls">
-        <span className="dock-connector-tag">{connectorLabel}</span>
         <div className="dock-rec-row">
           <button
             type="button"

@@ -3,7 +3,6 @@ import { DockHeader } from './DockHeader';
 
 interface Props {
   searchLabel: string;
-  connectorLabel?: string;
   recMode: 'fastest' | 'cheapest' | null;
   activeFilterCount: number;
   onSearchOpen: () => void;
@@ -14,7 +13,6 @@ interface Props {
 
 export function BottomDock({
   searchLabel,
-  connectorLabel,
   recMode,
   activeFilterCount,
   onSearchOpen,
@@ -39,7 +37,6 @@ export function BottomDock({
       </button>
 
       <div className="dock-rec-row">
-        {connectorLabel && <span className="dock-connector-tag">{connectorLabel}</span>}
         <button
           type="button"
           className={`dock-pill${recMode === 'fastest' ? ' active' : ''}`}

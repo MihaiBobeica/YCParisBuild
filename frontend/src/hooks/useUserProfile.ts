@@ -43,6 +43,6 @@ export function useUserProfile() {
 export const CONNECTOR_OPTIONS: Array<{ id: ConnectorPreference; label: string; sub: string }> = [
   { id: 'IEC_62196_T2', label: 'Type 2', sub: 'AC · most EU cars' },
   { id: 'IEC_62196_T2_COMBO', label: 'CCS', sub: 'DC fast · common' },
-  { id: 'CHADEMO', label: 'CHAdeMO', sub: 'DC · older Nissan' },
+  { id: 'CHADEMO', label: 'CHAdeMO', sub: '' },
   { id: 'TESLA', label: 'NACS', sub: 'Tesla / NACS' },
 ];

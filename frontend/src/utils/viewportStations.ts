@@ -44,8 +44,9 @@ export function sortStationsForRender(stations: StationPin[]): StationPin[] {
 }
 
 export function renderLimitForZoom(zoom: number): number {
-  if (zoom >= 15) return 160;
-  if (zoom >= 13) return 120;
+  if (zoom >= 16) return 320;
+  if (zoom >= 15) return 240;
+  if (zoom >= 13) return 150;
   if (zoom >= 11) return 85;
   if (zoom >= 9) return 60;
   return 40;

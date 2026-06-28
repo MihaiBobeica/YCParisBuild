@@ -170,8 +170,6 @@ export function MapPage() {
 
   const detailOpen = !!detail && !showNav;
   const filterCount = countActiveFilters(extraFilters);
-  const connectorLabel =
-    CONNECTOR_OPTIONS.find((o) => o.id === profile.connectorType)?.label ?? 'CCS';
   const menuOpen = showSearch || showAccount || showFilters || !!selectedPartner;
   const chromeBottomHidden = menuOpen || detailOpen;
 
@@ -225,7 +223,6 @@ export function MapPage() {
               </div>
               <BottomDock
                 searchLabel={searchLabel}
-                connectorLabel={connectorLabel}
                 recMode={recMode}
                 activeFilterCount={filterCount + (profile.connectorType ? 1 : 0)}
                 onSearchOpen={() => setShowSearch(true)}
@@ -243,7 +240,6 @@ export function MapPage() {
           searchText={searchText}
           searchResults={searchResults}
           searchDestination={searchDestination}
-          connectorLabel={connectorLabel}
           recMode={recMode}
           activeFilterCount={filterCount + (profile.connectorType ? 1 : 0)}
           recommendations={recommendations}
