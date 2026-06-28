@@ -24,7 +24,7 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend python scripts/seed_sample_data.py
 ```
 
-## Local dev (no Docker)
+## Local dev (no Docker)(if you really want to...)
 
 ```bash
 # backend
