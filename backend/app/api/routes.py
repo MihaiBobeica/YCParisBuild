@@ -3,7 +3,7 @@ import logging
 import threading
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,7 @@ from app.config import settings
 from app.data.partner_sites import PARTNER_SITES, PARTNER_SITES_BY_ID, get_partner_site
 from app.db.redis import cache_get, cache_set
 from app.db.session import get_db
-from app.models import SyncRun
+from app.models import Station, SyncRun
 from app.services.ndw_sync import sync_locations, sync_tariffs
 from app.schemas import BookingRequest, RecommendationRequest
 from app.services import partner_bookings as partner_booking_service
@@ -30,8 +30,23 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
-async def health():
-    return {"status": "ok", "app": settings.app_name}
+async def health(db: AsyncSession = Depends(get_db)):
+    station_count = await db.scalar(select(func.count()).select_from(Station)) or 0
+    runs = (await db.scalars(select(SyncRun))).all()
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "stations": station_count,
+        "sync": [
+            {
+                "dataset": r.dataset,
+                "last_success_at": r.last_success_at.isoformat() if r.last_success_at else None,
+                "records_processed": r.records_processed,
+                "error_message": r.error_message,
+            }
+            for r in runs
+        ],
+    }
 
 
 def _run_sync_jobs(dataset: str) -> None:
@@ -127,7 +142,8 @@ async def list_stations(
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    await cache_set(f"map:bbox:v3:{cache_key}", results, 180)
+    if results:
+        await cache_set(f"map:bbox:v3:{cache_key}", results, 180)
     return results
 
 

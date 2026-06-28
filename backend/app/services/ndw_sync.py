@@ -140,6 +140,8 @@ def sync_locations() -> int:
                             batch.append(parsed)
                     if len(batch) >= 200:
                         count += _upsert_locations_batch(session, batch, tariffs_map)
+                        session.commit()
+                        session.expire_all()
                         batch = []
                 if batch:
                     count += _upsert_locations_batch(session, batch, tariffs_map)
