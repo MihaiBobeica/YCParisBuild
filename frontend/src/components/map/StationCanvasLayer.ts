@@ -14,6 +14,8 @@ const GREEN_HALO = 'rgba(34, 197, 94, 0.20)';
 const SELECT_RING = '#0F172A';
 /** Extra ring of off-screen pins kept ready so small pans need no repaint. */
 const PADDING = 0.15;
+/** Safety ceiling so an extreme zoom-out can't paint an unbounded pin count. */
+const MAX_VISIBLE = 2000;
 
 /** Public helper kept for callers that only need the display color. */
 export function pinDisplayColor(station: StationPin): string {
@@ -56,6 +58,7 @@ export class StationCanvasLayer extends L.Layer {
   private _refs: LayerRefs = { stations: [], selectedId: null, onSelect: () => {} };
   private _grid: StationGrid = buildStationGrid([]);
   private _visible: GridStation[] = [];
+  private _renderedIds: Set<string> = new Set();
   private _placed: PlacedPin[] = [];
   private _min: L.Point = L.point(0, 0);
   private _max: L.Point = L.point(0, 0);
@@ -171,12 +174,42 @@ export class StationCanvasLayer extends L.Layer {
     const map = this._map;
     const nw = map.layerPointToLatLng(this._min);
     const se = map.layerPointToLatLng(this._max);
-    this._visible = queryView(
-      this._grid,
-      { south: se.lat, west: nw.lng, north: nw.lat, east: se.lng },
-      this._zoom,
-      0,
-    );
+    const south = se.lat;
+    const north = nw.lat;
+    const west = nw.lng;
+    const east = se.lng;
+
+    const base = queryView(this._grid, { south, west, north, east }, this._zoom, 0);
+
+    // Dedupe by id (queryView can emit a station twice when the viewport spans
+    // beyond the grid extent) and persist pins we already painted that remain
+    // inside the viewport, so a zoom/pan never declutters away bubbles the user
+    // can still see.
+    const seen = new Set<string>();
+    const visible: GridStation[] = [];
+    for (const gs of base) {
+      if (visible.length >= MAX_VISIBLE) break;
+      if (seen.has(gs.s.id)) continue;
+      seen.add(gs.s.id);
+      visible.push(gs);
+    }
+
+    if (visible.length < MAX_VISIBLE && this._renderedIds.size > 0) {
+      for (const id of this._renderedIds) {
+        if (visible.length >= MAX_VISIBLE) break;
+        if (seen.has(id)) continue;
+        const gs = this._grid.byId.get(id);
+        if (!gs) continue;
+        const { latitude: lat, longitude: lon } = gs.s;
+        if (lat >= south && lat <= north && lon >= west && lon <= east) {
+          seen.add(id);
+          visible.push(gs);
+        }
+      }
+    }
+
+    this._visible = visible;
+    this._renderedIds = seen;
   }
 
   private _paint() {
@@ -244,6 +277,10 @@ export class StationCanvasLayer extends L.Layer {
     ctx.lineWidth = selected ? 3 : 2;
     ctx.strokeStyle = selected ? SELECT_RING : '#fff';
     ctx.stroke();
+
+    if (isGreen && !selected && zoom >= 13 && gs.s.max_power_kw != null) {
+      drawPinKwLabel(ctx, x, y, r, formatPinKw(gs.s.max_power_kw));
+    }
   }
 
   private _onMapClick = (e: L.LeafletMouseEvent) => {
@@ -267,6 +304,30 @@ export class StationCanvasLayer extends L.Layer {
     }
     return best;
   }
+}
+
+function formatPinKw(kw: number): string {
+  return `${Math.round(kw)} kW`;
+}
+
+function drawPinKwLabel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  text: string,
+) {
+  ctx.save();
+  ctx.font = '700 10px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fff';
+  ctx.fillStyle = '#0F172A';
+  const labelY = y - r - 3;
+  ctx.strokeText(text, x, labelY);
+  ctx.fillText(text, x, labelY);
+  ctx.restore();
 }
 
 /**

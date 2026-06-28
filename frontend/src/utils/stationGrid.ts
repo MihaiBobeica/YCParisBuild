@@ -47,6 +47,7 @@ export interface GridStation {
 
 export interface StationGrid {
   readonly cells: Map<number, GridStation[]>;
+  readonly byId: Map<string, GridStation>;
   readonly cols: number;
   readonly minCol: number;
   readonly minRow: number;
@@ -65,6 +66,7 @@ const rowOf = (lat: number) => Math.floor(lat / CELL);
  */
 export function buildStationGrid(stations: StationPin[]): StationGrid {
   const cells = new Map<number, GridStation[]>();
+  const byId = new Map<string, GridStation>();
   let minCol = Infinity;
   let maxCol = -Infinity;
   let minRow = Infinity;
@@ -97,9 +99,10 @@ export function buildStationGrid(stations: StationPin[]): StationGrid {
     const bucket = cells.get(key);
     if (bucket) bucket.push(gs);
     else cells.set(key, [gs]);
+    byId.set(s.id, gs);
   }
 
-  return { cells, cols, minCol: safeMinCol, minRow: safeMinRow, size: stations.length };
+  return { cells, byId, cols, minCol: safeMinCol, minRow: safeMinRow, size: stations.length };
 }
 
 /** Rank: available (green) first, then by power, then cheaper price. */
