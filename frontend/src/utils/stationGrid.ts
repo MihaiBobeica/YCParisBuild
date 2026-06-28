@@ -1,4 +1,5 @@
 import type { StationPin } from '../api/client';
+import { hasValidStationPrice } from './pricing';
 import { expandBounds, renderLimitForZoom, type ViewBounds } from './viewportStations';
 
 export type PinKind = 'green' | 'orange' | 'red';
@@ -65,6 +66,7 @@ export function buildStationGrid(stations: StationPin[]): StationGrid {
   let maxRow = -Infinity;
 
   for (const s of stations) {
+    if (!hasValidStationPrice(s)) continue;
     const c = colOf(s.longitude);
     const r = rowOf(s.latitude);
     if (c < minCol) minCol = c;
@@ -78,6 +80,7 @@ export function buildStationGrid(stations: StationPin[]): StationGrid {
   const safeMinRow = stations.length ? minRow : 0;
 
   for (const s of stations) {
+    if (!hasValidStationPrice(s)) continue;
     const kind = resolvePinKind(s);
     const gs: GridStation = {
       s,

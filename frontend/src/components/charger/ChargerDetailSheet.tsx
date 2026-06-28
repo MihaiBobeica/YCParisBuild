@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { StationDetail, StationPin } from '../../api/client';
 import type { PartnerSite } from '../../data/partnerSites';
+import { hasValidEnergyPrice } from '../../utils/pricing';
 import { MenuSheet } from '../layout/MenuSheet';
 import { PartnerBookingPanel } from '../partner/PartnerBookingPanel';
 
@@ -65,10 +66,10 @@ export function ChargerDetailSheet({
           </div>
 
           <div className="detail-grid">
-            {station.energy_price != null && station.energy_price > 0 && (
+            {hasValidEnergyPrice(station.energy_price) && (
               <div className="detail-cell">
                 <span className="detail-k">Price / kWh</span>
-                <span className="detail-v">€{station.energy_price.toFixed(2)}</span>
+                <span className="detail-v">€{station.energy_price!.toFixed(2)}</span>
               </div>
             )}
             <div className="detail-cell">

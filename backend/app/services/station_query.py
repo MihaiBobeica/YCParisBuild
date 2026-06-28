@@ -37,6 +37,33 @@ from app.services.recommendation import haversine_km
 MAP_PIN_LIMIT = 250
 
 
+def _collect_tariff_keys(stations: list[Station]) -> set[str]:
+    """Tariff IDs needed to resolve prices not already cached on connectors."""
+    keys: set[str] = set()
+    for station in stations:
+        for evse in station.evses:
+            for c in evse.connectors:
+                if not is_valid_energy_price(c.resolved_energy_price) and c.tariff_ids:
+                    for tid in c.tariff_ids:
+                        keys.add(make_tariff_id(c.country_code, c.party_id, tid))
+    return keys
+
+
+def _priced_summaries(
+    stations: list[Station],
+    tariffs_map: dict[str, dict],
+    origin_lat: float | None = None,
+    origin_lon: float | None = None,
+    connector_type: str | None = None,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for s in stations:
+        summary = _station_summary(s, origin_lat, origin_lon, tariffs_map, connector_type)
+        if summary and is_valid_energy_price(summary.get("energy_price")):
+            results.append(summary)
+    return results
+
+
 async def load_tariffs_map(session: AsyncSession, keys: set[str]) -> dict[str, dict]:
     """Load tariffs into a lookup dict for the given tariff IDs."""
     if not keys:
@@ -199,17 +226,6 @@ async def fetch_stations_in_bbox(
         cand_q = cand_q.where(Station.access_class == filters["access_class"])
     if filters.get("parking_type"):
         cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
-    cand_q = cand_q.where(
-        exists(
-            select(1)
-            .select_from(Connector)
-            .where(
-                Connector.station_id == Station.id,
-                Connector.resolved_energy_price.isnot(None),
-                Connector.resolved_energy_price > 0,
-            )
-        )
-    )
     if filters.get("availability") == "available":
         cand_q = cand_q.having(has_available_expr.is_(True))
 
@@ -241,21 +257,12 @@ async def fetch_stations_in_bbox(
         )
     ).all()
 
-    # Collect tariff keys needed for connectors missing cached prices
-    tariff_keys: set[str] = set()
-    for station in stations:
-        for evse in station.evses:
-            for c in evse.connectors:
-                if c.resolved_energy_price is None and c.tariff_ids:
-                    for tid in c.tariff_ids:
-                        tariff_keys.add(make_tariff_id(c.country_code, c.party_id, tid))
-
+    # Collect tariff keys for connectors without a usable cached price.
+    tariff_keys = _collect_tariff_keys(stations)
     tariffs_map = await load_tariffs_map(session, tariff_keys) if tariff_keys else {}
-    results: list[dict[str, Any]] = []
-    for s in stations:
-        summary = _station_summary(s, origin_lat, origin_lon, tariffs_map, connector_type)
-        if summary and is_valid_energy_price(summary.get("energy_price")):
-            results.append(summary)
+    results = _priced_summaries(
+        stations, tariffs_map, origin_lat, origin_lon, connector_type
+    )
 
     if filters.get("availability") == "available":
         results = [r for r in results if r["pin_color"] == "green"]
@@ -278,7 +285,7 @@ async def fetch_station_detail(session: AsyncSession, station_id: str) -> dict[s
     if not station:
         return None
 
-    tariff_keys: set[str] = set()
+    tariff_keys = _collect_tariff_keys([station])
     for evse in station.evses:
         for c in evse.connectors:
             if c.tariff_ids:
@@ -359,11 +366,9 @@ async def search_stations_text(
             .limit(limit)
         )
     ).all()
-    return [
-        summary
-        for s in stations
-        if (summary := _station_summary(s)) and is_valid_energy_price(summary.get("energy_price"))
-    ]
+    tariff_keys = _collect_tariff_keys(list(stations))
+    tariffs_map = await load_tariffs_map(session, tariff_keys) if tariff_keys else {}
+    return _priced_summaries(list(stations), tariffs_map)
 
 
 async def fetch_nearby(
@@ -390,11 +395,11 @@ async def fetch_nearby(
         )
     q = q.limit(limit)
     stations = (await session.scalars(q)).all()
-    results: list[dict[str, Any]] = []
-    for s in stations:
-        summary = _station_summary(s, lat, lon, connector_type=connector_type)
-        if summary and is_valid_energy_price(summary.get("energy_price")):
-            results.append(summary)
+    tariff_keys = _collect_tariff_keys(list(stations))
+    tariffs_map = await load_tariffs_map(session, tariff_keys) if tariff_keys else {}
+    results = _priced_summaries(
+        list(stations), tariffs_map, lat, lon, connector_type
+    )
     return sorted(results, key=lambda x: x.get("distance_km", 999))
 
 

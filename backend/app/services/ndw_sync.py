@@ -22,7 +22,8 @@ from app.models import (
     TariffPriceComponent,
     TariffRestriction,
 )
-from app.services.ndw_parser import parse_location, parse_tariff, make_tariff_id
+from app.services.ndw_parser import make_tariff_id, parse_location, parse_tariff
+from app.services.pricing import is_valid_energy_price
 from app.services.tariff_join import resolve_connector_price
 
 logger = logging.getLogger(__name__)
@@ -236,9 +237,13 @@ def _upsert_locations_batch(
                 conn.party_id = conn_data["party_id"]
 
                 price, currency, _ = resolve_connector_price(conn_data, tariffs_map)
-                conn.resolved_energy_price = price
-                conn.resolved_currency = currency
-                new_price = str(price) if price is not None else None
+                if is_valid_energy_price(price):
+                    conn.resolved_energy_price = price
+                    conn.resolved_currency = currency
+                else:
+                    conn.resolved_energy_price = None
+                    conn.resolved_currency = None
+                new_price = str(price) if is_valid_energy_price(price) else None
                 _record_diff(session, evse_data["id"], "energy_price", old_price, new_price)
 
         count += 1
@@ -352,11 +357,15 @@ def backfill_connector_prices() -> int:
                     "party_id": conn.party_id,
                 }
                 price, currency, _ = resolve_connector_price(conn_data, tariffs_map)
-                if price is not None:
+                if is_valid_energy_price(price):
                     if conn.resolved_energy_price != price or conn.resolved_currency != currency:
                         conn.resolved_energy_price = price
                         conn.resolved_currency = currency
                         updated += 1
+                elif conn.resolved_energy_price is not None:
+                    conn.resolved_energy_price = None
+                    conn.resolved_currency = None
+                    updated += 1
             session.commit()
             last_id = batch[-1].id
             logger.info("Price backfill progress: last_id=%s updated=%d", last_id, updated)

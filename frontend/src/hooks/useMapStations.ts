@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiBaseUrl, type Filters, type StationPin } from '../api/client';
 import { mapLimitForZoom } from '../utils/mapLimits';
 import { clampBboxToNL, type Bbox } from '../utils/nlBounds';
+import { hasValidStationPrice } from '../utils/pricing';
 
 export type BboxPayload = Bbox;
 
@@ -17,10 +18,6 @@ const KEEP_PADDING = 1.5;
 /** Hard ceiling so the spatial grid build stays cheap even after lots of panning. */
 const MAX_CACHED = 4000;
 
-function hasValidPrice(s: StationPin): boolean {
-  return s.energy_price != null && s.energy_price > 0;
-}
-
 /**
  * Merge incoming pins, but drop previously cached pins that are far outside the
  * current viewport. This bounds the working set so grid builds stay O(viewport)
@@ -34,7 +31,7 @@ function mergeStations(
   const map = new Map<string, StationPin>();
   for (const s of prev) {
     if (
-      hasValidPrice(s) &&
+      hasValidStationPrice(s) &&
       s.latitude >= keep.minLat &&
       s.latitude <= keep.maxLat &&
       s.longitude >= keep.minLon &&
@@ -44,7 +41,7 @@ function mergeStations(
     }
   }
   for (const s of incoming) {
-    if (hasValidPrice(s)) map.set(s.id, s);
+    if (hasValidStationPrice(s)) map.set(s.id, s);
   }
 
   if (map.size <= MAX_CACHED) return [...map.values()];

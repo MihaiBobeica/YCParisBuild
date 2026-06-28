@@ -90,7 +90,9 @@ def test_is_valid_energy_price():
     assert not is_valid_energy_price(None)
     assert not is_valid_energy_price(0)
     assert not is_valid_energy_price(0.0)
+    assert not is_valid_energy_price(0.004)
     assert is_valid_energy_price(0.42)
+    assert is_valid_energy_price(0.01)
 
 
 def test_resolve_connector_price_rejects_zero():
