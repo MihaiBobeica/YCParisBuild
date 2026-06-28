@@ -4,13 +4,17 @@ import { PARTNER_SITES, type PartnerSite } from '../../data/partnerSites';
 
 function partnerIcon(site: PartnerSite) {
   const price = `€${site.energy_price.toFixed(2)}/kWh`;
+  const capacity = `${Math.round(site.max_power_kw)} kW`;
   return L.divIcon({
     className: 'partner-pin-wrap',
     html: `
       <div class="partner-pin">
         <span class="partner-pin-pulse"></span>
         <span class="partner-pin-core"></span>
-        <span class="partner-pin-bubble">${price}</span>
+        <span class="partner-pin-bubble">
+          <span class="partner-pin-bubble-price">${price}</span>
+          <span class="partner-pin-bubble-cap">${capacity}</span>
+        </span>
       </div>
     `,
     iconSize: [40, 40],

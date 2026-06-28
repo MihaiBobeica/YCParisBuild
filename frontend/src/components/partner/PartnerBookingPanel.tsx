@@ -7,6 +7,14 @@ import {
 import type { PartnerSite } from '../../data/partnerSites';
 
 const TZ = 'Europe/Amsterdam';
+const SLOT_BLOCK_HOURS = 2;
+const PRICE_LOW = 0.2;
+const PRICE_HIGH = 0.5;
+const PRICE_GREEN_MAX = 0.3;
+const PRICE_VALLEY_START = 10;
+const PRICE_VALLEY_END = 16;
+const PRICE_DAY_START = 6;
+const PRICE_DAY_END = 22;
 
 interface Props {
   site: PartnerSite;
@@ -35,6 +43,39 @@ function dayLabel(key: string): { title: string; sub: string } {
   if (key === today) return { title: 'Today', sub };
   if (key === tomorrow) return { title: 'Tomorrow', sub };
   return { title: d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: TZ }), sub };
+}
+
+/** Static mock: ~€0.20/kWh between 10:00–16:00, linear ramp to ~€0.50 at day edges. */
+function predictedSlotPrice(slotStartIso: string): number {
+  const d = new Date(slotStartIso);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === 'hour')!.value);
+  const minute = Number(parts.find((p) => p.type === 'minute')!.value);
+  const mid = hour + minute / 60 + SLOT_BLOCK_HOURS / 2;
+
+  if (mid >= PRICE_VALLEY_START && mid < PRICE_VALLEY_END) return PRICE_LOW;
+  if (mid < PRICE_VALLEY_START) {
+    const t = (mid - PRICE_DAY_START) / (PRICE_VALLEY_START - PRICE_DAY_START);
+    const clamped = Math.max(0, Math.min(1, t));
+    return PRICE_HIGH - (PRICE_HIGH - PRICE_LOW) * clamped;
+  }
+  const t = (mid - PRICE_VALLEY_END) / (PRICE_DAY_END - PRICE_VALLEY_END);
+  const clamped = Math.max(0, Math.min(1, t));
+  return PRICE_LOW + (PRICE_HIGH - PRICE_LOW) * clamped;
+}
+
+function fmtPredictedPrice(eurPerKwh: number, estimated: boolean): string {
+  const price = `€${eurPerKwh.toFixed(2)}/kWh`;
+  return estimated ? `Est. ${price}` : price;
+}
+
+function isFutureSlot(slotStartIso: string): boolean {
+  return new Date(slotStartIso).getTime() > Date.now();
 }
 
 export function PartnerBookingPanel({ site, email, onBooked }: Props) {
@@ -153,10 +194,15 @@ export function PartnerBookingPanel({ site, email, onBooked }: Props) {
             ))}
           </div>
 
+          <p className="partner-slot-price-hint">Estimated prices for upcoming time slots.</p>
+
           <div className="partner-slot-list">
             {activeSlots.map((s) => {
               const full = s.remaining <= 0;
               const isSel = selected.has(s.slot_start);
+              const predicted = predictedSlotPrice(s.slot_start);
+              const estimated = isFutureSlot(s.slot_start);
+              const lowPrice = predicted < PRICE_GREEN_MAX;
               return (
                 <button
                   key={s.slot_start}
@@ -168,6 +214,12 @@ export function PartnerBookingPanel({ site, email, onBooked }: Props) {
                   <span className="partner-slot-radio" aria-hidden />
                   <span className="partner-slot-time">
                     {fmtTime(s.slot_start)} – {fmtTime(s.slot_end)}
+                  </span>
+                  <span
+                    className={`partner-slot-price${lowPrice ? ' partner-slot-price--low' : ''}${estimated ? ' partner-slot-price--estimated' : ''}`}
+                    title={estimated ? 'Estimated price for this upcoming slot' : undefined}
+                  >
+                    {fmtPredictedPrice(predicted, estimated)}
                   </span>
                   <span className="partner-slot-cap">
                     {full ? 'Full' : `${s.remaining} / ${s.total_slots} free`}

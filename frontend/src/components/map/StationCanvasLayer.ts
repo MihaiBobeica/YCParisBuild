@@ -275,10 +275,9 @@ export class StationCanvasLayer extends L.Layer {
     ctx.strokeStyle = selected ? SELECT_RING : '#fff';
     ctx.stroke();
 
-    // Show the kW capacity label on every green pin (all zoom levels). Unknown
-    // power has nothing to print, so it's omitted; a selected pin shows the chip.
-    if (isGreen && !selected && gs.s.max_power_kw != null) {
-      drawPinKwLabel(ctx, x, y, r, formatPinKw(gs.s.max_power_kw));
+    // White price + capacity bubble on every available pin; selected pins use the chip.
+    if (isGreen && !selected) {
+      drawGreenPinBubble(ctx, x, y, r, pinBubbleLines(gs));
     }
   }
 
@@ -305,27 +304,79 @@ export class StationCanvasLayer extends L.Layer {
   }
 }
 
-function formatPinKw(kw: number): string {
-  return `${Math.round(kw)} kW`;
+/** Map preview bubble: price + kW only (no available/total spot count). */
+function pinBubbleLines(gs: GridStation): { line1: string; line2: string | null } {
+  const line2 = gs.s.max_power_kw != null ? `${Math.round(gs.s.max_power_kw)} kW` : null;
+  return { line1: gs.chip.line1, line2 };
 }
 
-function drawPinKwLabel(
+/** Compact white bubble above available pins: price on top, kW below. */
+function drawGreenPinBubble(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   r: number,
-  text: string,
+  lines: { line1: string; line2: string | null },
 ) {
+  const fontTitle = '700 10px system-ui, -apple-system, sans-serif';
+  const fontSub = '600 9px system-ui, -apple-system, sans-serif';
+  const padX = 7;
+  const padY = 5;
+  const gap = 2;
+  const titleH = 11;
+  const subH = 10;
+  const notch = 4;
+  const radius = 7;
+  const twoLine = lines.line2 != null;
+
   ctx.save();
-  ctx.font = '700 10px system-ui, -apple-system, sans-serif';
+  ctx.font = fontTitle;
+  const w1 = ctx.measureText(lines.line1).width;
+  let contentW = w1;
+  if (twoLine) {
+    ctx.font = fontSub;
+    contentW = Math.max(w1, ctx.measureText(lines.line2!).width);
+  }
+
+  const h = twoLine ? titleH + gap + subH + padY * 2 : titleH + padY * 2;
+  const w = contentW + padX * 2;
+  const left = Math.round(x - w / 2);
+  const top = Math.round(y - r - 5 - notch - h);
+
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.14)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(left, top, w, h, radius);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x - notch, top + h - 0.5);
+  ctx.lineTo(x + notch, top + h - 0.5);
+  ctx.lineTo(x, top + h + notch);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#fff';
+  ctx.textBaseline = 'middle';
+  const cx = x;
+
+  ctx.font = fontTitle;
   ctx.fillStyle = '#0F172A';
-  const labelY = y - r - 3;
-  ctx.strokeText(text, x, labelY);
-  ctx.fillText(text, x, labelY);
+  if (twoLine) {
+    ctx.fillText(lines.line1, cx, top + padY + titleH / 2);
+    ctx.font = fontSub;
+    ctx.fillStyle = '#64748B';
+    ctx.fillText(lines.line2!, cx, top + padY + titleH + gap + subH / 2);
+  } else {
+    ctx.fillText(lines.line1, cx, top + padY + titleH / 2);
+  }
+
   ctx.restore();
 }
 

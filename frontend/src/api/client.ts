@@ -1,8 +1,17 @@
 const RAW_API_URL = import.meta.env.VITE_API_URL || '';
-// Allow VITE_API_URL to be a bare host (e.g. Render's service host) by adding
-// the scheme so fetch treats it as absolute rather than a relative path.
-const API_URL =
-  RAW_API_URL && !/^https?:\/\//.test(RAW_API_URL) ? `https://${RAW_API_URL}` : RAW_API_URL;
+
+/** Normalize VITE_API_URL for browser fetch (must be a public absolute URL). */
+export function normalizeApiBaseUrl(raw: string): string {
+  if (!raw) return '';
+  if (/^https?:\/\//.test(raw)) return raw;
+  // Render blueprint `fromService: property: host` injects the private-network
+  // hostname (e.g. "paxor-backend"), which only resolves inside Render. Browsers
+  // need the public *.onrender.com subdomain.
+  if (!raw.includes('.')) return `https://${raw}.onrender.com`;
+  return `https://${raw}`;
+}
+
+const API_URL = normalizeApiBaseUrl(RAW_API_URL);
 
 /** Normalized API base (with scheme). Empty string means same-origin. */
 export const apiBaseUrl = API_URL;

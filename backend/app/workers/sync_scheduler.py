@@ -23,6 +23,13 @@ def _bootstrap_sync() -> None:
     """Ensure tariffs and locations are loaded before serving queries."""
     try:
         with SyncSession() as session:
+            station_count = session.scalar(select(func.count()).select_from(Station)) or 0
+        # Load locations first so map pins appear while tariffs sync in the background.
+        if station_count == 0:
+            logger.info("No stations in DB — running initial locations sync")
+            sync_locations()
+
+        with SyncSession() as session:
             tariff_count = session.scalar(select(func.count()).select_from(Tariff)) or 0
         if tariff_count == 0:
             logger.info("No tariffs in DB — running initial tariff sync")
@@ -36,12 +43,6 @@ def _bootstrap_sync() -> None:
                 )
             if missing and missing > 0:
                 backfill_connector_prices()
-
-        with SyncSession() as session:
-            station_count = session.scalar(select(func.count()).select_from(Station)) or 0
-        if station_count == 0:
-            logger.info("No stations in DB — running initial locations sync")
-            sync_locations()
     except Exception:
         logger.exception("Bootstrap sync failed")
 
