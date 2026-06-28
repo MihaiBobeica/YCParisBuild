@@ -176,3 +176,46 @@ def test_map_limit_for_zoom():
     assert map_limit_for_zoom(13) == 140
     assert map_limit_for_zoom(16) == 180
 
+
+def test_compute_session_savings():
+    from app.services.partner_bookings import compute_session_savings
+
+    # Partner cheaper than nearby average: 40 kWh * (0.41 - 0.20) = 8.40
+    assert compute_session_savings(0.41, 0.20, 40) == 8.40
+    # No nearby average known -> savings unknown
+    assert compute_session_savings(None, 0.20, 40) is None
+    # Partner not cheaper -> clamped to zero
+    assert compute_session_savings(0.15, 0.20, 40) == 0.0
+
+
+def test_generate_slots_shape():
+    from datetime import datetime, timezone
+
+    from app.services.partner_bookings import (
+        BLOCK_HOURS,
+        DAY_END_HOUR,
+        DAY_START_HOUR,
+        generate_slots,
+    )
+
+    # Anchor before the booking window so all blocks for the day are returned.
+    now = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    slots = generate_slots(now)
+    assert len(slots) > 0
+    blocks_per_day = (DAY_END_HOUR - DAY_START_HOUR) // BLOCK_HOURS
+    assert len(slots) == blocks_per_day * 3  # 3 days, no past blocks dropped
+    for start, end in slots:
+        assert (end - start).total_seconds() == BLOCK_HOURS * 3600
+        assert start < end
+
+
+def test_generate_slots_drops_past_blocks():
+    from datetime import datetime, timezone
+
+    from app.services.partner_bookings import generate_slots
+
+    early = generate_slots(datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc))
+    # Anchoring later in the first day must yield fewer total slots.
+    late = generate_slots(datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc))
+    assert len(late) < len(early)
+

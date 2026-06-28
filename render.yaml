@@ -1,0 +1,72 @@
+# Render.com Blueprint for paxor
+# Deploy with: Render Dashboard -> New -> Blueprint -> point at this repo.
+# Managed Postgres (PostGIS) + Key Value (Redis) + Dockerized FastAPI + static SPA.
+
+databases:
+  - name: paxor-db
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  # Redis (Render Key Value) for the bbox/station response cache.
+  - type: keyvalue
+    name: paxor-redis
+    plan: free
+    ipAllowList: []
+
+  # FastAPI backend (Docker). PostGIS extension is created by Alembic env.py.
+  - type: web
+    name: paxor-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    # Run DB migrations before each deploy goes live.
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: paxor-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: paxor-redis
+          property: connectionString
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: paxor-frontend
+          property: host
+      - key: APP_NAME
+        value: paxor
+      - key: TZ
+        value: Europe/Amsterdam
+      # Set these in the Render dashboard (marked sync:false = not committed).
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_YEARLY
+        sync: false
+
+  # React/Vite SPA served as a static site.
+  - type: web
+    name: paxor-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: paxor-backend
+          property: host
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

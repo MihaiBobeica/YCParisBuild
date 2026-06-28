@@ -7,10 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import stripe
 
 from app.config import settings
+from app.data.partner_sites import PARTNER_SITES, PARTNER_SITES_BY_ID, get_partner_site
 from app.db.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models import Subscription
-from app.schemas import CheckoutRequest, PortalRequest, RecommendationRequest
+from app.schemas import BookingRequest, CheckoutRequest, PortalRequest, RecommendationRequest
+from app.services import partner_bookings as partner_booking_service
 from app.services.geocode import geocode_query
 from app.services.recommendation import build_recommendations
 from app.services.station_query import (
@@ -190,6 +192,59 @@ async def monitor(
 @router.get("/filters/operators")
 async def operators(db: AsyncSession = Depends(get_db)):
     return await fetch_operators(db)
+
+
+@router.get("/partner-sites")
+async def partner_sites():
+    return PARTNER_SITES
+
+
+@router.get("/partner-sites/{site_id}/availability")
+async def partner_site_availability(site_id: str, db: AsyncSession = Depends(get_db)):
+    site = get_partner_site(site_id)
+    if not site:
+        raise HTTPException(404, "Partner site not found")
+    return await partner_booking_service.slot_availability(db, site)
+
+
+@router.post("/partner-bookings")
+async def create_partner_bookings(body: BookingRequest, db: AsyncSession = Depends(get_db)):
+    site = get_partner_site(body.partner_site_id)
+    if not site:
+        raise HTTPException(404, "Partner site not found")
+    slots = [(s.start, s.end) for s in body.slots]
+    try:
+        created = await partner_booking_service.create_bookings(db, body.email, site, slots)
+    except partner_booking_service.CapacityError as e:
+        raise HTTPException(409, str(e))
+    return [partner_booking_service.booking_to_dict(b, site["name"]) for b in created]
+
+
+@router.get("/partner-bookings")
+async def get_partner_bookings(email: str = Query(...), db: AsyncSession = Depends(get_db)):
+    bookings = await partner_booking_service.list_bookings(db, email)
+    return [
+        partner_booking_service.booking_to_dict(
+            b, PARTNER_SITES_BY_ID.get(b.partner_site_id, {}).get("name")
+        )
+        for b in bookings
+    ]
+
+
+@router.delete("/partner-bookings/{booking_id}")
+async def delete_partner_booking(
+    booking_id: str, email: str = Query(...), db: AsyncSession = Depends(get_db)
+):
+    ok = await partner_booking_service.cancel_booking(db, booking_id, email)
+    if not ok:
+        raise HTTPException(404, "Booking not found")
+    return {"ok": True}
+
+
+@router.get("/partner-bookings/savings")
+async def get_partner_savings(email: str = Query(...), db: AsyncSession = Depends(get_db)):
+    total, count, year = await partner_booking_service.savings_ytd(db, email)
+    return {"ytd_savings": total, "currency": "EUR", "bookings_count": count, "year": year}
 
 
 @router.post("/billing/checkout")

@@ -14,6 +14,8 @@ import { ChargerDetailSheet } from '../components/charger/ChargerDetailSheet';
 import { NavigationPicker } from '../components/charger/NavigationPicker';
 import { ReroutePrompt } from '../components/charger/ReroutePrompt';
 import { FilterSheet } from '../components/filters/FilterSheet';
+import { PartnerBookingSheet } from '../components/partner/PartnerBookingSheet';
+import type { PartnerSite } from '../data/partnerSites';
 import { BottomDock, countActiveFilters } from '../components/layout/BottomDock';
 import { DesktopSidebar } from '../components/layout/DesktopSidebar';
 import { SearchSheet } from '../components/layout/SearchSheet';
@@ -45,8 +47,11 @@ export function MapPage() {
   const [showNav, setShowNav] = useState(false);
   const [rerouteAlt, setRerouteAlt] = useState<StationPin | null>(null);
   const [recMode, setRecMode] = useState<'fastest' | 'cheapest' | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<PartnerSite | null>(null);
+  const [savingsRefresh, setSavingsRefresh] = useState(0);
   const [navTarget, setNavTarget] = useState<MapNavTarget | null>(null);
   const [origin, setOrigin] = useState({ lat: 52.1326, lon: 5.2913 });
+  const [toast, setToast] = useState<string | null>(null);
   const backupIdsRef = useRef<string[]>([]);
   const searchDebounceRef = useRef<number | null>(null);
 
@@ -96,6 +101,14 @@ export function MapPage() {
     [loadRecommendations, flyTo],
   );
 
+  const selectPartner = useCallback(
+    (site: PartnerSite) => {
+      setSelectedPartner(site);
+      flyTo(site.latitude, site.longitude, 15, `partner-${site.id}`);
+    },
+    [flyTo],
+  );
+
   const handleDegraded = useCallback((alt: unknown) => {
     setRerouteAlt(alt as StationPin);
   }, []);
@@ -135,7 +148,8 @@ export function MapPage() {
   const pickSearchResult = useCallback(
     (r: { label: string; address: string; latitude: number; longitude: number }) => {
       if (!isInNL(r.latitude, r.longitude)) {
-        alert('Please pick a location within the Netherlands.');
+        setToast('Please pick a location within the Netherlands.');
+        window.setTimeout(() => setToast(null), 3000);
         return;
       }
       setSearchDestination({ lat: r.latitude, lon: r.longitude, label: r.label });
@@ -158,7 +172,7 @@ export function MapPage() {
   const filterCount = countActiveFilters(extraFilters);
   const connectorLabel =
     CONNECTOR_OPTIONS.find((o) => o.id === profile.connectorType)?.label ?? 'CCS';
-  const menuOpen = showSearch || showAccount || showFilters;
+  const menuOpen = showSearch || showAccount || showFilters || !!selectedPartner;
   const chromeBottomHidden = menuOpen || detailOpen;
 
   return (
@@ -168,6 +182,7 @@ export function MapPage() {
           stations={stations}
           selectedId={selectedId}
           onSelect={selectStation}
+          onSelectPartner={selectPartner}
           onBboxChange={loadStations}
           navTarget={navTarget}
           searchDestination={searchDestination}
@@ -175,12 +190,20 @@ export function MapPage() {
 
         {loading && <div className="map-loading-bar" aria-hidden />}
 
+        <div className="map-legend map-legend--desktop">
+          <span><i className="legend-dot green" /> Available</span>
+          <span><i className="legend-dot red" /> Unavailable</span>
+          <span><i className="legend-dot orange" /> Unknown</span>
+          <span><i className="legend-dot partner" /> Partner · cheaper</span>
+        </div>
+
         <div className="map-chrome map-chrome--mobile">
           <div className="map-chrome-top">
             <div className="map-legend">
               <span><i className="legend-dot green" /> Available</span>
               <span><i className="legend-dot red" /> Unavailable</span>
               <span><i className="legend-dot orange" /> Unknown</span>
+              <span><i className="legend-dot partner" /> Partner</span>
             </div>
           </div>
 
@@ -215,8 +238,7 @@ export function MapPage() {
         </div>
       </div>
 
-      {!detailOpen && (
-        <DesktopSidebar
+      <DesktopSidebar
           searchLabel={searchLabel}
           searchText={searchText}
           searchResults={searchResults}
@@ -232,9 +254,7 @@ export function MapPage() {
           onFilterOpen={() => setShowFilters(true)}
           onRecChange={setRecMode}
           onSelectRecommendation={selectStation}
-          connectorType={profile.connectorType}
         />
-      )}
 
       {showSearch && (
         <SearchSheet
@@ -248,11 +268,26 @@ export function MapPage() {
       )}
 
       {showAccount && (
-        <AccountSheet profile={profile} onChange={setProfile} onClose={() => setShowAccount(false)} />
+        <AccountSheet
+          profile={profile}
+          onChange={setProfile}
+          onClose={() => setShowAccount(false)}
+          savingsRefresh={savingsRefresh}
+        />
       )}
 
       {showFilters && (
         <FilterSheet filters={extraFilters} onChange={setExtraFilters} onClose={() => setShowFilters(false)} />
+      )}
+
+      {selectedPartner && (
+        <PartnerBookingSheet
+          site={selectedPartner}
+          email={profile.email}
+          onSetEmail={(email) => setProfile({ email })}
+          onBooked={() => setSavingsRefresh((n) => n + 1)}
+          onClose={() => setSelectedPartner(null)}
+        />
       )}
 
       {detailOpen && (
@@ -282,6 +317,8 @@ export function MapPage() {
           onDismiss={() => setRerouteAlt(null)}
         />
       )}
+
+      {toast && <div className="app-toast" role="status">{toast}</div>}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import {
   BboxWatcher,
@@ -8,7 +7,9 @@ import {
   type MapNavTarget,
 } from './MapController';
 import { ChargerMarkers } from './ChargerMarkers';
+import { PartnerMarkers } from './PartnerMarkers';
 import { SearchDestinationPin, type SearchDestination } from './SearchDestinationPin';
+import type { PartnerSite } from '../../data/partnerSites';
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -24,6 +25,7 @@ interface Props {
   stations: StationPin[];
   selectedId: string | null;
   onSelect: (station: StationPin) => void;
+  onSelectPartner: (site: PartnerSite) => void;
   onBboxChange: (bbox: BboxPayload) => void;
   navTarget?: MapNavTarget | null;
   searchDestination?: SearchDestination | null;
@@ -33,12 +35,11 @@ export function ChargerMap({
   stations,
   selectedId,
   onSelect,
+  onSelectPartner,
   onBboxChange,
   navTarget = null,
   searchDestination = null,
 }: Props) {
-  const [liveZoom, setLiveZoom] = useState(8);
-
   return (
     <MapContainer
       center={NL_CENTER as [number, number]}
@@ -63,17 +64,10 @@ export function ChargerMap({
       />
       <MapInteractionSetup />
       <MapNavigator target={navTarget} />
-      <BboxWatcher
-        onChange={onBboxChange}
-        onZoomChange={setLiveZoom}
-      />
+      <BboxWatcher onChange={onBboxChange} />
       <MapZoomControls />
-      <ChargerMarkers
-        stations={stations}
-        selectedId={selectedId}
-        zoom={liveZoom}
-        onSelect={onSelect}
-      />
+      <ChargerMarkers stations={stations} selectedId={selectedId} onSelect={onSelect} />
+      <PartnerMarkers onSelect={onSelectPartner} />
       <SearchDestinationPin destination={searchDestination} />
     </MapContainer>
   );

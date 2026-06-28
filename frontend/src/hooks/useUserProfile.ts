@@ -8,7 +8,7 @@ export interface UserProfile {
   connectorType: ConnectorPreference;
 }
 
-const STORAGE_KEY = 'nl-ev-user-profile';
+const STORAGE_KEY = 'paxor-user-profile';
 
 const DEFAULT: UserProfile = {
   email: '',

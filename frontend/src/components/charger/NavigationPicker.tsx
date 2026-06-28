@@ -1,4 +1,5 @@
 import { appleMapsUrl, googleMapsUrl, wazeUrl } from '../../utils/navigationLinks';
+import { MenuSheet } from '../layout/MenuSheet';
 
 interface Props {
   lat: number;
@@ -14,17 +15,20 @@ export function NavigationPicker({ lat, lon, onClose }: Props) {
   ];
 
   return (
-    <div className="sheet">
-      <div className="sheet-handle" />
-      <h2 style={{ textAlign: 'center', marginTop: 0 }}>Choose your navigation</h2>
-      {links.map((l) => (
-        <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" className="nav-row" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-          {l.label}
-        </a>
-      ))}
-      <button className="primary-pill" style={{ background: '#8E8E93', marginTop: 8 }} onClick={onClose}>
-        Close
-      </button>
-    </div>
+    <MenuSheet title="Choose your navigation" onClose={onClose}>
+      <div className="nav-row-list">
+        {links.map((l) => (
+          <a
+            key={l.label}
+            href={l.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-row"
+          >
+            {l.label}
+          </a>
+        ))}
+      </div>
+    </MenuSheet>
   );
 }

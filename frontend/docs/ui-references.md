@@ -1,6 +1,6 @@
-# Pangea Charging UI References
+# paxor UI References
 
-Design reference for NL EV Charging Assistant V1. Mobbin is inspiration only.
+Design reference for paxor. Mobbin is inspiration only.
 
 | UI surface | Mobbin reference | Pattern |
 |------------|------------------|---------|
@@ -11,3 +11,6 @@ Design reference for NL EV Charging Assistant V1. Mobbin is inspiration only.
 | Navigation picker | [Choose navigation](https://mobbin.com/screens/1d04535e-2fae-4fb2-8bac-fd6c132918b0) | Apple/Google/Waze pill rows |
 | Route preview | [Preview route](https://mobbin.com/screens/82d30439-b6ba-4eb8-8176-6d5fd4d3cde5) | Blue route line, price/kW label |
 | Operator filter | [Chargers brands](https://mobbin.com/screens/6bc36b3a-cdf1-489e-bfb3-f0fe43e17f4b) | Operator logos row |
+| Partner booking slots | [Instacart Scheduled](https://mobbin.com/screens/3d6e65e8-da95-4811-b490-a3a143d1747d) | Day tabs (Today/Tomorrow/…) + time-block rows with right-aligned status/capacity |
+| Booking duration/time | [Pangea Add to Trip](https://mobbin.com/screens/ea4da8f9-cfc4-4c30-93cb-332405fcad82) | Calendar + duration chips |
+| Slot picker | [Calendly One-off meeting](https://mobbin.com/screens/10fdff2c-63ee-47b2-bfc8-83ec1991d6c3) | Date strip + duration list |

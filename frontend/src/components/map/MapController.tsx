@@ -72,7 +72,7 @@ export function BboxWatcher({
   onZoomChange,
 }: {
   onChange: (bbox: BboxPayload) => void;
-  onZoomChange: (zoom: number) => void;
+  onZoomChange?: (zoom: number) => void;
 }) {
   const map = useMap();
   const onChangeRef = useRef(onChange);
@@ -84,7 +84,7 @@ export function BboxWatcher({
     const emit = () => {
       const b = map.getBounds();
       const zoom = map.getZoom();
-      onZoomRef.current(zoom);
+      onZoomRef.current?.(zoom);
       onChangeRef.current({
         min_lat: b.getSouth(),
         min_lon: b.getWest(),

@@ -1,4 +1,11 @@
-const API_URL = import.meta.env.VITE_API_URL || '';
+const RAW_API_URL = import.meta.env.VITE_API_URL || '';
+// Allow VITE_API_URL to be a bare host (e.g. Render's service host) by adding
+// the scheme so fetch treats it as absolute rather than a relative path.
+const API_URL =
+  RAW_API_URL && !/^https?:\/\//.test(RAW_API_URL) ? `https://${RAW_API_URL}` : RAW_API_URL;
+
+/** Normalized API base (with scheme). Empty string means same-origin. */
+export const apiBaseUrl = API_URL;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
@@ -80,7 +87,6 @@ export interface Filters {
   parking_type?: string;
   access_class?: string;
   known_price_only?: boolean;
-  speed?: 'slow' | 'fast';
 }
 
 export function fetchStations(
@@ -163,5 +169,83 @@ export function createPortal(email: string) {
 export function fetchBillingStatus(email: string) {
   return request<{ status: string; plan: string; current_period_end?: string }>(
     `/api/billing/status?email=${encodeURIComponent(email)}`,
+  );
+}
+
+export interface PartnerSiteApi {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  energy_price: number;
+  currency: string;
+  max_power_kw: number;
+  connector_types: string[];
+  total_slots: number;
+}
+
+export interface SlotAvailability {
+  slot_start: string;
+  slot_end: string;
+  total_slots: number;
+  booked: number;
+  remaining: number;
+}
+
+export interface PartnerBooking {
+  id: string;
+  partner_site_id: string;
+  partner_site_name?: string | null;
+  slot_start: string;
+  slot_end: string;
+  partner_price?: number | null;
+  nearby_avg_price?: number | null;
+  session_kwh: number;
+  session_savings?: number | null;
+  currency: string;
+  created_at: string;
+}
+
+export interface SavingsSummary {
+  ytd_savings: number;
+  currency: string;
+  bookings_count: number;
+  year: number;
+}
+
+export function fetchPartnerSites() {
+  return request<PartnerSiteApi[]>('/api/partner-sites');
+}
+
+export function fetchPartnerAvailability(siteId: string) {
+  return request<SlotAvailability[]>(`/api/partner-sites/${siteId}/availability`);
+}
+
+export function createPartnerBooking(body: {
+  email: string;
+  partner_site_id: string;
+  slots: Array<{ start: string; end: string }>;
+}) {
+  return request<PartnerBooking[]>('/api/partner-bookings', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchPartnerBookings(email: string) {
+  return request<PartnerBooking[]>(`/api/partner-bookings?email=${encodeURIComponent(email)}`);
+}
+
+export function deletePartnerBooking(id: string, email: string) {
+  return request<{ ok: boolean }>(
+    `/api/partner-bookings/${id}?email=${encodeURIComponent(email)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export function fetchPartnerSavings(email: string) {
+  return request<SavingsSummary>(
+    `/api/partner-bookings/savings?email=${encodeURIComponent(email)}`,
   );
 }

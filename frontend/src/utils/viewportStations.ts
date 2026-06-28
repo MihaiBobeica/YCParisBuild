@@ -33,14 +33,6 @@ export function filterStationsInView(
   );
 }
 
-export function filterByConnectorType(
-  stations: StationPin[],
-  connectorType: string | undefined,
-): StationPin[] {
-  if (!connectorType) return stations;
-  return stations.filter((s) => (s.connector_types || []).includes(connectorType));
-}
-
 export function stationPriority(s: StationPin): number {
   if (s.pin_color === 'green') return 3;
   if (s.pin_color === 'red') return 2;
@@ -52,9 +44,9 @@ export function sortStationsForRender(stations: StationPin[]): StationPin[] {
 }
 
 export function renderLimitForZoom(zoom: number): number {
-  if (zoom >= 15) return 120;
-  if (zoom >= 13) return 90;
-  if (zoom >= 11) return 65;
-  if (zoom >= 9) return 45;
-  return 30;
+  if (zoom >= 15) return 160;
+  if (zoom >= 13) return 120;
+  if (zoom >= 11) return 85;
+  if (zoom >= 9) return 60;
+  return 40;
 }

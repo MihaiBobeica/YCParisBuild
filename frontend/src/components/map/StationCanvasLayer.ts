@@ -98,6 +98,7 @@ export class StationCanvasLayer extends L.Layer {
     const events: Record<string, L.LeafletEventHandlerFn> = {
       viewreset: this._reset,
       zoom: this._onZoom,
+      move: this._onMove,
       moveend: this._update,
       resize: this._update,
       click: this._onMapClick as L.LeafletEventHandlerFn,
@@ -116,6 +117,19 @@ export class StationCanvasLayer extends L.Layer {
   private _onZoom = () => {
     if (!this._map) return;
     this._updateTransform(this._map.getCenter(), this._map.getZoom());
+  };
+
+  /**
+   * Throttled repaint while panning so newly revealed pins at the leading edge
+   * appear during the drag instead of only after it settles (moveend).
+   */
+  private _lastMovePaint = 0;
+  private _onMove = () => {
+    if (!this._map || (this._map as MapInternals)._animatingZoom) return;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now - this._lastMovePaint < 110) return;
+    this._lastMovePaint = now;
+    this._update();
   };
 
   private _onAnimZoom = (e: L.ZoomAnimEvent) => {

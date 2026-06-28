@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Filters, StationPin } from '../api/client';
+import { apiBaseUrl, type Filters, type StationPin } from '../api/client';
 import { mapLimitForZoom } from '../utils/mapLimits';
 import { clampBboxToNL, type Bbox } from '../utils/nlBounds';
-import { filterByConnectorType } from '../utils/viewportStations';
 
 export type BboxPayload = Bbox;
 
@@ -56,15 +55,18 @@ export function useMapStations(
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<number | null>(null);
   const lastBboxRef = useRef<string>('');
+  const lastPayloadRef = useRef<BboxPayload | null>(null);
   const originRef = useRef(origin);
   originRef.current = origin;
 
   const load = useCallback(
     (bbox: BboxPayload) => {
+      lastPayloadRef.current = bbox;
       const clamped = clampBboxToNL(bbox);
       if (!clamped) return;
 
-      const key = `${clamped.min_lat.toFixed(4)}:${clamped.min_lon.toFixed(4)}:${clamped.max_lat.toFixed(4)}:${clamped.max_lon.toFixed(4)}:${clamped.zoom}:${filters.connector_type || ''}`;
+      const filterKey = JSON.stringify(filters);
+      const key = `${clamped.min_lat.toFixed(4)}:${clamped.min_lon.toFixed(4)}:${clamped.max_lat.toFixed(4)}:${clamped.max_lon.toFixed(4)}:${clamped.zoom}:${filterKey}`;
       if (key === lastBboxRef.current) return;
       lastBboxRef.current = key;
 
@@ -93,13 +95,11 @@ export function useMapStations(
             if (v !== undefined && v !== '' && v !== false) params.set(k, String(v));
           });
 
-          const API_URL = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${API_URL}/api/stations?${params}`, {
+          const res = await fetch(`${apiBaseUrl}/api/stations?${params}`, {
             signal: controller.signal,
           });
           if (!res.ok) throw new Error(await res.text());
-          let data: StationPin[] = await res.json();
-          data = filterByConnectorType(data, filters.connector_type);
+          const data: StationPin[] = await res.json();
           if (!controller.signal.aborted) {
             const latPad = (clamped.max_lat - clamped.min_lat) * KEEP_PADDING;
             const lonPad = (clamped.max_lon - clamped.min_lon) * KEEP_PADDING;
@@ -122,12 +122,16 @@ export function useMapStations(
   );
 
   useEffect(() => {
+    // Filters changed: invalidate the dedup key, drop now-stale pins, and refetch
+    // the current viewport immediately so toggles apply without needing a pan.
     lastBboxRef.current = '';
+    setStations([]);
+    if (lastPayloadRef.current) load(lastPayloadRef.current);
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };
-  }, [filters]);
+  }, [filters, load]);
 
   return { stations, loading, loadStations: load };
 }

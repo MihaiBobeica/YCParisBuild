@@ -1,6 +1,7 @@
 from app.models import (
     Connector,
     Evse,
+    PartnerBooking,
     Station,
     StatusDiff,
     StripeEvent,
@@ -22,4 +23,5 @@ __all__ = [
     "SyncRun",
     "Subscription",
     "StripeEvent",
+    "PartnerBooking",
 ]

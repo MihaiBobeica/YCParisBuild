@@ -8,26 +8,22 @@ interface Props {
 
 export function ReroutePrompt({ alternative, onSwitch, onDismiss }: Props) {
   return (
-    <div className="sheet" style={{ maxHeight: '40vh' }}>
+    <div className="sheet reroute-sheet">
       <div className="sheet-handle" />
-      <h3 style={{ marginTop: 0 }}>This charger may no longer be available</h3>
-      <p style={{ color: '#8E8E93' }}>Switch to a better option?</p>
-      <div className="rec-card" style={{ minWidth: 'unset', marginBottom: 16 }}>
+      <h3 className="reroute-title">This charger may no longer be available</h3>
+      <p className="reroute-sub">Switch to a better option?</p>
+      <div className="reroute-alt">
         <strong>{alternative.name}</strong>
-        <div style={{ color: '#8E8E93', fontSize: 13, marginTop: 4 }}>
+        <div className="reroute-alt-meta">
           {alternative.availability_label}
           {alternative.energy_price != null ? ` · €${alternative.energy_price.toFixed(2)}/kWh` : ''}
           {alternative.max_power_kw ? ` · ${alternative.max_power_kw} kW` : ''}
         </div>
       </div>
-      <button className="primary-pill" onClick={onSwitch} style={{ marginBottom: 8 }}>
+      <button type="button" className="primary-pill reroute-switch" onClick={onSwitch}>
         Switch
       </button>
-      <button
-        className="pill-btn"
-        style={{ width: '100%', boxShadow: 'none', background: '#F2F2F7' }}
-        onClick={onDismiss}
-      >
+      <button type="button" className="reroute-keep" onClick={onDismiss}>
         Keep current charger
       </button>
     </div>

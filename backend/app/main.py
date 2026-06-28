@@ -23,6 +23,9 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_url, "http://localhost:5173", "http://localhost:80"],
+    # Allow Render-hosted frontends (static sites on *.onrender.com) without
+    # having to hardcode the generated URL in the blueprint.
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

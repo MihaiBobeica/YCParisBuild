@@ -7,7 +7,6 @@ export { pinDisplayColor } from './StationCanvasLayer';
 interface Props {
   stations: StationPin[];
   selectedId: string | null;
-  zoom: number;
   onSelect: (station: StationPin) => void;
 }
 

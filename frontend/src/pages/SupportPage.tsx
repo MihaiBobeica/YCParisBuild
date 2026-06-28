@@ -6,14 +6,16 @@ export function SupportPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ status: string; plan: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const subscribe = async (plan: 'monthly' | 'yearly') => {
     setLoading(true);
+    setError(null);
     try {
       const { url } = await createCheckout(plan, email || undefined);
       window.location.href = url;
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Checkout failed');
+      setError(e instanceof Error ? e.message : 'Checkout failed');
     } finally {
       setLoading(false);
     }
@@ -22,11 +24,12 @@ export function SupportPage() {
   const manage = async () => {
     if (!email) return;
     setLoading(true);
+    setError(null);
     try {
       const { url } = await createPortal(email);
       window.location.href = url;
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Portal failed');
+      setError(e instanceof Error ? e.message : 'Portal failed');
     } finally {
       setLoading(false);
     }
@@ -43,7 +46,7 @@ export function SupportPage() {
       <Link to="/" style={{ color: '#007AFF' }}>
         ← Back to map
       </Link>
-      <h1 style={{ fontWeight: 700, letterSpacing: '-0.5px' }}>Support NL EV Charging</h1>
+      <h1 style={{ fontWeight: 700, letterSpacing: '-0.5px' }}>Support paxor</h1>
       <p className="disclaimer">
         All charging features are free. This subscription supports development and reserves future
         perks — nothing is locked today.
@@ -78,6 +81,8 @@ export function SupportPage() {
           Subscribe
         </button>
       </div>
+
+      {error && <p className="billing-error">{error}</p>}
 
       {email && (
         <div style={{ marginTop: 24 }}>

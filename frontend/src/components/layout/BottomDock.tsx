@@ -66,7 +66,8 @@ export function countActiveFilters(filters: Filters): number {
   if (filters.connector_type) n++;
   if (filters.min_kw) n++;
   if (filters.operator) n++;
+  if (filters.parking_type) n++;
+  if (filters.access_class) n++;
   if (filters.known_price_only) n++;
-  if (filters.speed) n++;
   return n;
 }

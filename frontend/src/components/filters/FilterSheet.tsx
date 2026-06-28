@@ -1,4 +1,5 @@
-import type { Filters } from '../../api/client';
+import { useEffect, useState } from 'react';
+import { fetchOperators, type Filters } from '../../api/client';
 import { MenuSheet } from '../layout/MenuSheet';
 
 interface Props {
@@ -7,7 +8,43 @@ interface Props {
   onClose: () => void;
 }
 
+const PRICE_TIERS: Array<{ label: string; value: number }> = [
+  { label: 'Free', value: 0 },
+  { label: '€', value: 0.35 },
+  { label: '€€', value: 0.55 },
+  { label: '€€€', value: 999 },
+];
+
+const POWER_TIERS: Array<{ label: string; value: number | undefined }> = [
+  { label: 'Any', value: undefined },
+  { label: '11+', value: 11 },
+  { label: '22+', value: 22 },
+  { label: '50+', value: 50 },
+  { label: '150+', value: 150 },
+];
+
+const PARKING_TYPES: Array<{ label: string; value: string | undefined }> = [
+  { label: 'All', value: undefined },
+  { label: 'On street', value: 'ON_STREET' },
+  { label: 'Garage', value: 'PARKING_GARAGE' },
+  { label: 'Motorway', value: 'ALONG_MOTORWAY' },
+];
+
+const ACCESS_CLASSES: Array<{ label: string; value: string | undefined }> = [
+  { label: 'All', value: undefined },
+  { label: 'Public', value: 'public' },
+  { label: 'Semi-public', value: 'semi-public' },
+];
+
 export function FilterSheet({ filters, onChange, onClose }: Props) {
+  const [operators, setOperators] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchOperators()
+      .then(setOperators)
+      .catch(() => setOperators([]));
+  }, []);
+
   return (
     <MenuSheet
       title="Filter"
@@ -20,46 +57,62 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
     >
       <p className="filter-section-label">Price</p>
       <div className="segmented filter-segmented">
-        {['Free', '€', '€€', '€€€'].map((label, i) => (
+        {PRICE_TIERS.map((tier, i) => (
           <button
-            key={label}
+            key={tier.label}
             type="button"
-            className={filters.max_price === [0, 0.35, 0.55, 999][i] ? 'active' : ''}
+            className={filters.max_price === tier.value ? 'active' : ''}
             onClick={() =>
-              onChange({
-                ...filters,
-                max_price: [0, 0.35, 0.55, 999][i],
-                known_price_only: i > 0,
-              })
+              onChange({ ...filters, max_price: tier.value, known_price_only: i > 0 })
             }
           >
-            {label}
+            {tier.label}
           </button>
         ))}
       </div>
 
-      <p className="filter-section-label">Speed</p>
+      <p className="filter-section-label filter-section-label--spaced">Charging power</p>
       <div className="segmented filter-segmented">
-        <button
-          type="button"
-          className={filters.speed !== 'fast' ? 'active' : ''}
-          onClick={() => onChange({ ...filters, speed: 'slow', min_kw: undefined })}
-        >
-          Slow
-        </button>
-        <button
-          type="button"
-          className={filters.speed === 'fast' ? 'active' : ''}
-          onClick={() => onChange({ ...filters, speed: 'fast', min_kw: 50 })}
-        >
-          Fast
-        </button>
+        {POWER_TIERS.map((tier) => (
+          <button
+            key={tier.label}
+            type="button"
+            className={(filters.min_kw ?? undefined) === tier.value ? 'active' : ''}
+            onClick={() => onChange({ ...filters, min_kw: tier.value })}
+          >
+            {tier.label}
+            {tier.value ? ' kW' : ''}
+          </button>
+        ))}
       </div>
 
-      <p className="filter-section-label">Connector type</p>
-      <p className="field-hint filter-hint">
-        Set your car&apos;s plug in Account — the map only shows compatible chargers.
-      </p>
+      <p className="filter-section-label filter-section-label--spaced">Access</p>
+      <div className="segmented filter-segmented">
+        {ACCESS_CLASSES.map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            className={(filters.access_class ?? undefined) === opt.value ? 'active' : ''}
+            onClick={() => onChange({ ...filters, access_class: opt.value })}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="filter-section-label filter-section-label--spaced">Parking</p>
+      <div className="segmented filter-segmented">
+        {PARKING_TYPES.map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            className={(filters.parking_type ?? undefined) === opt.value ? 'active' : ''}
+            onClick={() => onChange({ ...filters, parking_type: opt.value })}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
       <p className="filter-section-label filter-section-label--spaced">Availability</p>
       <div className="segmented filter-segmented">
@@ -79,6 +132,20 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         </button>
       </div>
 
+      <p className="filter-section-label filter-section-label--spaced">Operator</p>
+      <select
+        className="field-input filter-operator-select"
+        value={filters.operator || ''}
+        onChange={(e) => onChange({ ...filters, operator: e.target.value || undefined })}
+      >
+        <option value="">Any operator</option>
+        {operators.map((op) => (
+          <option key={op} value={op}>
+            {op}
+          </option>
+        ))}
+      </select>
+
       <label className="filter-checkbox">
         <input
           type="checkbox"
@@ -88,12 +155,10 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         Known price only
       </label>
 
-      <input
-        className="filter-operator-input"
-        placeholder="Operator name"
-        value={filters.operator || ''}
-        onChange={(e) => onChange({ ...filters, operator: e.target.value || undefined })}
-      />
+      <p className="filter-section-label filter-section-label--spaced">Connector type</p>
+      <p className="field-hint filter-hint">
+        Set your car&apos;s plug in Account — the map only shows compatible chargers.
+      </p>
     </MenuSheet>
   );
 }

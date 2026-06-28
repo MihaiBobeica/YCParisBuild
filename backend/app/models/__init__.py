@@ -182,3 +182,25 @@ class StripeEvent(Base):
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PartnerBooking(Base):
+    __tablename__ = "partner_bookings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    partner_site_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    slot_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    slot_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    partner_price: Mapped[float | None] = mapped_column(Float)
+    nearby_avg_price: Mapped[float | None] = mapped_column(Float)
+    session_kwh: Mapped[float] = mapped_column(Float, default=40.0)
+    session_savings: Mapped[float | None] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("email", "partner_site_id", "slot_start", name="uq_partner_booking_slot"),
+        Index("ix_partner_bookings_site_slot", "partner_site_id", "slot_start"),
+        Index("ix_partner_bookings_email", "email"),
+    )
