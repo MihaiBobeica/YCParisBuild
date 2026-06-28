@@ -16,7 +16,7 @@ const DEFAULT: UserProfile = {
   email: '',
   name: '',
   carName: '',
-  connectorType: 'IEC_62196_T2_COMBO',
+  connectorType: '',
   authed: false,
 };
 

@@ -200,7 +200,7 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
               <BottomDock
                 searchLabel={searchLabel}
                 recMode={recMode}
-                activeFilterCount={filterCount + (profile.connectorType ? 1 : 0)}
+                activeFilterCount={filterCount}
                 onSearchOpen={() => setShowSearch(true)}
                 onAccountOpen={() => setShowAccount(true)}
                 onFilterOpen={() => setShowFilters(true)}
@@ -227,7 +227,7 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
           searchResults={searchResults}
           searchDestination={searchDestination}
           recMode={recMode}
-          activeFilterCount={filterCount + (profile.connectorType ? 1 : 0)}
+          activeFilterCount={filterCount}
           recommendations={recommendations}
           onSearchChange={handleSearch}
           onSearchPick={pickSearchResult}
