@@ -2,7 +2,7 @@ import hashlib
 import logging
 import threading
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,11 +116,20 @@ async def list_stations(
     db: AsyncSession = Depends(get_db),
 ):
     zoom_int = int(round(zoom)) if zoom is not None else None
+
+    # Snap the viewport to a coarse grid (~110m) so small pans/zooms reuse the
+    # same query + cache entry. Without this, the raw float bbox makes every map
+    # movement a unique key and the Redis cache below almost never hits. Pins are
+    # already grid-decluttered downstream, so a quantized viewport is visually
+    # identical to the exact one.
+    min_lat, min_lon = round(min_lat, 3), round(min_lon, 3)
+    max_lat, max_lon = round(max_lat, 3), round(max_lon, 3)
+
     cache_key = hashlib.md5(
         f"{min_lat}:{min_lon}:{max_lat}:{max_lon}:{availability}:{max_price}:{connector_type}:"
-        f"{min_kw}:{operator}:{map_limit}:{zoom_int}".encode()
+        f"{min_kw}:{operator}:{parking_type}:{access_class}:{map_limit}:{zoom_int}".encode()
     ).hexdigest()
-    cached = await cache_get(f"map:bbox:v5:{cache_key}")
+    cached = await cache_get(f"map:bbox:v6:{cache_key}")
     if cached:
         return cached
 
@@ -141,7 +150,7 @@ async def list_stations(
         raise HTTPException(400, str(e))
 
     if results:
-        await cache_set(f"map:bbox:v5:{cache_key}", results, 180)
+        await cache_set(f"map:bbox:v6:{cache_key}", results, 180)
     return results
 
 
@@ -211,12 +220,21 @@ async def recommendations(body: RecommendationRequest, db: AsyncSession = Depend
 
 
 @router.get("/filters/operators")
-async def operators(db: AsyncSession = Depends(get_db)):
-    return await fetch_operators(db)
+async def operators(response: Response, db: AsyncSession = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    cached = await cache_get("filters:operators")
+    if cached is not None:
+        return cached
+    result = await fetch_operators(db)
+    await cache_set("filters:operators", result, 3600)
+    return result
 
 
 @router.get("/partner-sites")
-async def partner_sites():
+async def partner_sites(response: Response):
+    # Static in-memory list — skip Redis (a network round-trip would be slower
+    # than serving the constant) and let clients cache it instead.
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return PARTNER_SITES
 
 

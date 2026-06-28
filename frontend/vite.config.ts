@@ -11,6 +11,18 @@ export default defineConfig({
   // Load VITE_* vars from the repo-root .env (shared with docker-compose backend).
   envDir: path.resolve(__dirname, '..'),
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy, rarely-changing vendor code into its own long-cacheable
+        // chunks so the map (Leaflet) isn't in the critical-path entry bundle.
+        manualChunks: {
+          leaflet: ['leaflet', 'react-leaflet'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173,

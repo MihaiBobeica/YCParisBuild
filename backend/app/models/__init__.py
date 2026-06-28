@@ -87,6 +87,12 @@ class Connector(Base):
 
     evse: Mapped["Evse"] = relationship(back_populates="connectors")
 
+    __table_args__ = (
+        Index("ix_connectors_evse", "evse_id"),
+        Index("ix_connectors_station", "station_id"),
+        Index("ix_connectors_station_standard", "station_id", "standard"),
+    )
+
 
 class Tariff(Base):
     __tablename__ = "tariffs"

@@ -25,6 +25,26 @@ export function pinDisplayColor(station: StationPin): string {
 
 type SelectHandler = (station: StationPin) => void;
 
+/**
+ * Cheap content fingerprint over the fields that affect what gets drawn (pin
+ * color, chip text, declutter ranking). `mergeStations` returns a fresh array on
+ * every fetch even when an overlapping pan yields identical pins, so this lets us
+ * skip the O(N) grid + chip rebuild when nothing render-relevant actually
+ * changed. FNV-1a over a small field set; collisions are astronomically rare and
+ * at worst skip a redundant rebuild of visually identical data.
+ */
+function stationsSignature(stations: StationPin[]): string {
+  let h = 0x811c9dc5;
+  for (const s of stations) {
+    const str = `${s.id}|${s.pin_color}|${s.availability_label}|${s.energy_price}|${s.max_power_kw}`;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+  }
+  return `${stations.length}:${h >>> 0}`;
+}
+
 interface LayerRefs {
   stations: StationPin[];
   selectedId: string | null;
@@ -57,6 +77,7 @@ export class StationCanvasLayer extends L.Layer {
   private _ctx!: CanvasRenderingContext2D;
   private _refs: LayerRefs = { stations: [], selectedId: null, onSelect: () => {} };
   private _grid: StationGrid = buildStationGrid([]);
+  private _dataSig = '0:0';
   private _visible: GridStation[] = [];
   private _placed: PlacedPin[] = [];
   private _min: L.Point = L.point(0, 0);
@@ -67,9 +88,19 @@ export class StationCanvasLayer extends L.Layer {
   private _dpr = 1;
 
   setData(stations: StationPin[], selectedId: string | null, onSelect: SelectHandler) {
-    const dataChanged = stations !== this._refs.stations;
+    const arrayChanged = stations !== this._refs.stations;
     this._refs = { stations, selectedId, onSelect };
-    if (dataChanged) this._grid = buildStationGrid(stations);
+    // Only rebuild the spatial grid when the array reference changed AND its
+    // render-relevant content actually differs. Reference equality already
+    // covers selection-only updates (same array); the signature additionally
+    // skips rebuilds when a fetch returns a new-but-identical pin set.
+    if (arrayChanged) {
+      const sig = stationsSignature(stations);
+      if (sig !== this._dataSig) {
+        this._dataSig = sig;
+        this._grid = buildStationGrid(stations);
+      }
+    }
     this._update();
   }
 

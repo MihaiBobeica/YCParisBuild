@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     ndw_locations_url: str = "https://opendata.ndw.nu/charging_point_locations_ocpi.json.gz"
     ndw_tariffs_url: str = "https://opendata.ndw.nu/charging_point_tariffs_ocpi.json.gz"
-    sync_locations_interval_min: int = 10
+    sync_locations_interval_min: int = 15
     sync_tariffs_interval_min: int = 45
 
     photon_url: str = "https://photon.komoot.io/api/"

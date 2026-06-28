@@ -1,7 +1,11 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import { MapPage } from './pages/MapPage';
 import { LoginGate } from './components/auth/LoginGate';
 import { useUserProfile } from './hooks/useUserProfile';
+
+// Keep the map + Leaflet bundle out of the critical path: unauthenticated users
+// (LoginGate) never download it, and it loads only once the user is signed in.
+const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })));
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -15,7 +19,9 @@ export function App() {
           path="/"
           element={
             profile.authed ? (
-              <MapPage profile={profile} setProfile={setProfile} signOut={signOut} />
+              <Suspense fallback={null}>
+                <MapPage profile={profile} setProfile={setProfile} signOut={signOut} />
+              </Suspense>
             ) : (
               <LoginGate
                 clientId={GOOGLE_CLIENT_ID}

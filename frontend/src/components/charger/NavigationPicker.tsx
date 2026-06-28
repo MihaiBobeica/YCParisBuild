@@ -4,14 +4,17 @@ import { MenuSheet } from '../layout/MenuSheet';
 interface Props {
   lat: number;
   lon: number;
+  name?: string | null;
+  address?: string | null;
   onClose: () => void;
 }
 
-export function NavigationPicker({ lat, lon, onClose }: Props) {
+export function NavigationPicker({ lat, lon, name, address, onClose }: Props) {
+  const target = { lat, lon, name, address };
   const links = [
-    { label: 'Apple Maps', url: appleMapsUrl(lat, lon) },
-    { label: 'Google Maps', url: googleMapsUrl(lat, lon) },
-    { label: 'Waze', url: wazeUrl(lat, lon) },
+    { label: 'Apple Maps', url: appleMapsUrl(target) },
+    { label: 'Google Maps', url: googleMapsUrl(target) },
+    { label: 'Waze', url: wazeUrl(target) },
   ];
 
   return (

@@ -1,3 +1,5 @@
+import 'leaflet/dist/leaflet.css';
+import { memo } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import {
   BboxWatcher,
@@ -31,7 +33,7 @@ interface Props {
   searchDestination?: SearchDestination | null;
 }
 
-export function ChargerMap({
+export const ChargerMap = memo(function ChargerMap({
   stations,
   selectedId,
   onSelect,
@@ -71,4 +73,4 @@ export function ChargerMap({
       <SearchDestinationPin destination={searchDestination} />
     </MapContainer>
   );
-}
+});

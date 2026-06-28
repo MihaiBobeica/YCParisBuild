@@ -3,14 +3,14 @@ from typing import Any
 
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_DWithin, ST_Intersects, ST_MakeEnvelope, ST_MakePoint, ST_SetSRID
-from sqlalchemy import cast, exists, func, or_, select
+from sqlalchemy import and_, cast, distinct, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
 from app.services.pricing import is_valid_energy_price
-from app.services.pin_status import aggregate_pin_color, availability_summary
+from app.services.pin_status import BLOCKING, aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
 from app.services.spatial import select_candidate_ids, select_map_pins
 from app.services.tariff_join import resolve_connector_price
@@ -173,6 +173,139 @@ def _station_summary(
     return summary
 
 
+async def _aggregated_bbox_summaries(
+    session: AsyncSession,
+    station_ids: list[str],
+    origin_lat: float | None,
+    origin_lon: float | None,
+    connector_type: str | None,
+) -> list[dict[str, Any]]:
+    """Build map summaries for the chosen station ids via grouped SQL aggregation
+    instead of hydrating EVSE/connector ORM objects.
+
+    Map stations always have a cached, already-validated `resolved_energy_price`
+    (priceless connectors/stations are purged on sync), so prices come straight
+    from the connectors table — no tariff resolution needed here. Status pins use
+    the real status multiset so `aggregate_pin_color`/`availability_summary`
+    behave identically to the ORM path.
+    """
+    if not station_ids:
+        return []
+
+    station_rows = (
+        await session.execute(
+            select(
+                Station.id,
+                Station.name,
+                Station.address,
+                Station.city,
+                Station.latitude,
+                Station.longitude,
+                Station.operator_name,
+                Station.owner_name,
+                Station.parking_type,
+                Station.facilities,
+                Station.access_class,
+                Station.last_updated,
+            ).where(Station.id.in_(station_ids))
+        )
+    ).all()
+
+    # EVSE status multiset per station. When filtering by connector_type, only
+    # statuses of EVSEs exposing that standard are counted (matching the ORM
+    # path); last_updated still spans all EVSEs.
+    statuses_agg = func.array_agg(Evse.status)
+    if connector_type:
+        statuses_agg = statuses_agg.filter(
+            exists(
+                select(1)
+                .select_from(Connector)
+                .where(
+                    Connector.evse_id == Evse.id,
+                    Connector.standard == connector_type,
+                )
+            )
+        )
+    evse_rows = (
+        await session.execute(
+            select(
+                Evse.station_id,
+                statuses_agg.label("statuses"),
+                func.max(Evse.last_updated).label("last_updated"),
+            )
+            .where(Evse.station_id.in_(station_ids))
+            .group_by(Evse.station_id)
+        )
+    ).all()
+    evse_by_station = {r.station_id: r for r in evse_rows}
+
+    # Connector aggregates: cheapest valid price, its currency, peak power, and
+    # the distinct standards. Stored resolved_energy_price values are already
+    # validated at sync time, so `> 0` selects exactly the valid prices.
+    conn_q = (
+        select(
+            Connector.station_id,
+            func.min(Connector.resolved_energy_price)
+            .filter(Connector.resolved_energy_price > 0)
+            .label("energy_price"),
+            func.max(Connector.resolved_currency)
+            .filter(Connector.resolved_energy_price > 0)
+            .label("currency"),
+            func.max(Connector.max_power_kw).label("max_power_kw"),
+            func.array_agg(distinct(Connector.standard))
+            .filter(Connector.standard.isnot(None))
+            .label("standards"),
+        )
+        .where(Connector.station_id.in_(station_ids))
+        .group_by(Connector.station_id)
+    )
+    if connector_type:
+        conn_q = conn_q.where(Connector.standard == connector_type)
+    conn_rows = (await session.execute(conn_q)).all()
+    conn_by_station = {r.station_id: r for r in conn_rows}
+
+    results: list[dict[str, Any]] = []
+    for s in station_rows:
+        conn = conn_by_station.get(s.id)
+        energy_price = conn.energy_price if conn else None
+        if not is_valid_energy_price(energy_price):
+            continue
+        evse = evse_by_station.get(s.id)
+        statuses = list(evse.statuses) if evse and evse.statuses else []
+        if connector_type and not statuses:
+            continue
+        last_updated = evse.last_updated if (evse and evse.last_updated) else s.last_updated
+        standards = list(conn.standards) if (conn and conn.standards) else []
+
+        summary: dict[str, Any] = {
+            "id": s.id,
+            "name": s.name,
+            "address": s.address,
+            "city": s.city,
+            "latitude": s.latitude,
+            "longitude": s.longitude,
+            "operator": s.operator_name,
+            "owner": s.owner_name,
+            "parking_type": s.parking_type,
+            "facilities": s.facilities or [],
+            "access_class": s.access_class,
+            "statuses": statuses,
+            "availability_label": availability_summary(statuses),
+            "energy_price": energy_price,
+            "currency": conn.currency if conn else None,
+            "max_power_kw": conn.max_power_kw if conn else None,
+            "connector_types": standards,
+            "pin_color": aggregate_pin_color(statuses),
+            "last_updated": last_updated.isoformat() if last_updated else None,
+        }
+        if origin_lat is not None and origin_lon is not None:
+            summary["distance_km"] = round(
+                haversine_km(origin_lat, origin_lon, s.latitude, s.longitude), 2
+            )
+        results.append(summary)
+    return results
+
+
 async def fetch_stations_in_bbox(
     session: AsyncSession,
     min_lat: float,
@@ -194,21 +327,25 @@ async def fetch_stations_in_bbox(
     envelope = ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
 
     # ---- Phase 1: lightweight candidate selection over the whole bbox ----
-    # Aggregate availability in SQL; no ORM EVSE/connector objects are built, so
-    # this stays cheap even when the bbox covers all of NL.
-    has_available_expr = func.bool_or(Evse.status == "AVAILABLE")
+    # Default path is a pure GiST spatial scan over `stations` (no EVSE join),
+    # because candidate sampling in `select_candidate_ids` is color-agnostic and
+    # never reads availability. We only join/aggregate EVSE status when the
+    # caller actually filters by `availability=available` (the HAVING below).
+    needs_availability = filters.get("availability") == "available"
+
     cand_q = (
-        select(
-            Station.id,
-            Station.latitude,
-            Station.longitude,
-            has_available_expr.label("has_available"),
-        )
+        select(Station.id, Station.latitude, Station.longitude)
         .select_from(Station)
-        .outerjoin(Evse, Evse.station_id == Station.id)
         .where(ST_Intersects(Station.geom, envelope))
-        .group_by(Station.id, Station.latitude, Station.longitude)
     )
+
+    if needs_availability:
+        has_available_expr = func.bool_or(Evse.status == "AVAILABLE")
+        cand_q = (
+            cand_q.outerjoin(Evse, Evse.station_id == Station.id)
+            .group_by(Station.id, Station.latitude, Station.longitude)
+            .having(has_available_expr.is_(True))
+        )
 
     # Cheap filters that don't require building summaries belong in Phase 1 so
     # the candidate set is already correct before sampling.
@@ -226,8 +363,6 @@ async def fetch_stations_in_bbox(
         cand_q = cand_q.where(Station.access_class == filters["access_class"])
     if filters.get("parking_type"):
         cand_q = cand_q.where(Station.parking_type == filters["parking_type"])
-    if filters.get("availability") == "available":
-        cand_q = cand_q.having(has_available_expr.is_(True))
 
     cand_rows = (await session.execute(cand_q)).all()
     if not cand_rows:
@@ -238,7 +373,6 @@ async def fetch_stations_in_bbox(
             "id": r.id,
             "latitude": r.latitude,
             "longitude": r.longitude,
-            "has_available": bool(r.has_available),
         }
         for r in cand_rows
     ]
@@ -248,20 +382,10 @@ async def fetch_stations_in_bbox(
     if not chosen_ids:
         return []
 
-    # ---- Phase 2: full load only for the chosen ids (bounded by map_limit) ----
-    stations = (
-        await session.scalars(
-            select(Station)
-            .where(Station.id.in_(chosen_ids))
-            .options(selectinload(Station.evses).selectinload(Evse.connectors))
-        )
-    ).all()
-
-    # Collect tariff keys for connectors without a usable cached price.
-    tariff_keys = _collect_tariff_keys(stations)
-    tariffs_map = await load_tariffs_map(session, tariff_keys) if tariff_keys else {}
-    results = _priced_summaries(
-        stations, tariffs_map, origin_lat, origin_lon, connector_type
+    # ---- Phase 2: grouped SQL aggregation for the chosen ids (<= map_limit) ----
+    # No ORM EVSE/connector hydration: prices/power/status are aggregated in SQL.
+    results = await _aggregated_bbox_summaries(
+        session, chosen_ids, origin_lat, origin_lon, connector_type
     )
 
     if filters.get("availability") == "available":

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchAlternatives,
   fetchRecommendations,
@@ -9,15 +9,28 @@ import {
   type StationDetail,
   type StationPin,
 } from '../api/client';
-import { AccountSheet } from '../components/account/AccountSheet';
-import { ChargerDetailSheet } from '../components/charger/ChargerDetailSheet';
-import { NavigationPicker } from '../components/charger/NavigationPicker';
-import { FilterSheet } from '../components/filters/FilterSheet';
 import { partnerToStationDetail, type PartnerSite } from '../data/partnerSites';
 import { BottomDock, countActiveFilters } from '../components/layout/BottomDock';
 import { DesktopSidebar } from '../components/layout/DesktopSidebar';
-import { SearchSheet } from '../components/layout/SearchSheet';
 import { ChargerMap } from '../components/map/ChargerMap';
+
+// Modal sheets are only mounted on demand, so load their code lazily to keep
+// the initial map view light.
+const AccountSheet = lazy(() =>
+  import('../components/account/AccountSheet').then((m) => ({ default: m.AccountSheet })),
+);
+const ChargerDetailSheet = lazy(() =>
+  import('../components/charger/ChargerDetailSheet').then((m) => ({ default: m.ChargerDetailSheet })),
+);
+const NavigationPicker = lazy(() =>
+  import('../components/charger/NavigationPicker').then((m) => ({ default: m.NavigationPicker })),
+);
+const FilterSheet = lazy(() =>
+  import('../components/filters/FilterSheet').then((m) => ({ default: m.FilterSheet })),
+);
+const SearchSheet = lazy(() =>
+  import('../components/layout/SearchSheet').then((m) => ({ default: m.SearchSheet })),
+);
 import type { MapNavTarget } from '../components/map/MapController';
 import type { SearchDestination } from '../components/map/SearchDestinationPin';
 import { RecommendationCards } from '../components/recommendations/RecommendationCards';
@@ -224,6 +237,7 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
           onSelectRecommendation={selectStation}
         />
 
+      <Suspense fallback={null}>
       {showSearch && (
         <SearchSheet
           query={searchText}
@@ -283,9 +297,12 @@ export function MapPage({ profile, setProfile, signOut }: MapPageProps) {
         <NavigationPicker
           lat={selectedPartner ? selectedPartner.latitude : detail!.latitude}
           lon={selectedPartner ? selectedPartner.longitude : detail!.longitude}
+          name={selectedPartner ? selectedPartner.name : detail!.name}
+          address={selectedPartner ? selectedPartner.address : detail!.address}
           onClose={() => setShowNav(false)}
         />
       )}
+      </Suspense>
 
       {toast && <div className="app-toast" role="status">{toast}</div>}
     </div>
