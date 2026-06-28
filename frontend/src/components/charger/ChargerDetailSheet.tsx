@@ -56,12 +56,6 @@ export function ChargerDetailSheet({
           </div>
         </div>
         <div>
-          <div style={{ color: '#8E8E93' }}>Confidence</div>
-          <div style={{ fontWeight: 600 }}>
-            {station.confidence_label} ({station.confidence}/100)
-          </div>
-        </div>
-        <div>
           <div style={{ color: '#8E8E93' }}>Operator</div>
           <div style={{ fontWeight: 600 }}>{station.operator || '—'}</div>
         </div>

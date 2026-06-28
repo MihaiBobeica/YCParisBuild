@@ -1,6 +1,6 @@
 # NL EV Charging Assistant
 
-Netherlands EV charging assistant built on [NDW DOT-NL](https://opendata.ndw.nu/) OCPI open data. Helps drivers find the best charging station based on availability, price, distance, charging speed, connector type, and data confidence.
+Netherlands EV charging assistant built on [NDW DOT-NL](https://opendata.ndw.nu/) OCPI open data. Helps drivers find the best charging station based on availability, price, distance, charging speed, and connector type.
 
 **All V1 features are free.** Optional Stripe subscriptions support development but unlock nothing.
 

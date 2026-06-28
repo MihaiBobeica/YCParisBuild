@@ -1,6 +1,5 @@
 import pytest
 
-from app.services.confidence import compute_confidence
 from app.services.ndw_parser import make_tariff_id, parse_location, parse_tariff
 from app.services.pin_status import aggregate_pin_color, availability_summary
 from app.services.recommendation import build_recommendations, haversine_km
@@ -85,31 +84,12 @@ def test_tariff_join():
     assert matched is True
 
 
-def test_confidence_full():
-    from datetime import datetime, timezone
-
-    score, label = compute_confidence(
-        ["AVAILABLE"],
-        True,
-        datetime.now(timezone.utc),
-        True,
-    )
-    assert score >= 75
-    assert label == "High"
-
-
-def test_confidence_unknown():
-    score, label = compute_confidence(["UNKNOWN"], False, None, False)
-    assert score == 0
-    assert label == "Low"
-
-
 def test_pin_color_green():
-    assert aggregate_pin_color(["AVAILABLE"], 80, False) == "green"
+    assert aggregate_pin_color(["AVAILABLE"], False) == "green"
 
 
 def test_pin_color_red():
-    assert aggregate_pin_color(["CHARGING", "CHARGING"], 50, False) == "red"
+    assert aggregate_pin_color(["CHARGING", "CHARGING"], False) == "red"
 
 
 def test_availability_summary():
@@ -133,8 +113,6 @@ def test_recommendations():
             "currency": "EUR",
             "max_power_kw": 50,
             "connector_types": ["IEC_62196_T2_COMBO"],
-            "confidence": 80,
-            "confidence_label": "High",
             "availability_label": "Available (1/1)",
             "pin_color": "green",
         },
@@ -148,8 +126,6 @@ def test_recommendations():
             "currency": "EUR",
             "max_power_kw": 22,
             "connector_types": ["IEC_62196_T2"],
-            "confidence": 60,
-            "confidence_label": "Medium",
             "availability_label": "Available (1/1)",
             "pin_color": "green",
         },
@@ -165,7 +141,7 @@ def test_select_map_pins_respects_limit():
     from app.services.spatial import select_map_pins
 
     stations = [
-        {"id": f"s{i}", "latitude": 52.0 + (i % 20) * 0.01, "longitude": 4.0 + (i // 20) * 0.01, "pin_color": "green", "confidence": 50}
+        {"id": f"s{i}", "latitude": 52.0 + (i % 20) * 0.01, "longitude": 4.0 + (i // 20) * 0.01, "pin_color": "green"}
         for i in range(200)
     ]
     picked = select_map_pins(stations, 40, 52.0, 4.0, 52.2, 4.2, zoom=11)
@@ -182,7 +158,6 @@ def test_select_map_pins_stable_across_bbox_shift():
             "latitude": 51.9 + (i % 30) * 0.008,
             "longitude": 4.4 + (i // 30) * 0.008,
             "pin_color": "green" if i % 3 == 0 else "red",
-            "confidence": 50 + (i % 20),
         }
         for i in range(300)
     ]

@@ -67,14 +67,12 @@ def build_recommendations(
                 price_score = 1.0
         dist_score = 1 - s["distance_km"] / max_dist
         power_score = (s.get("max_power_kw") or 0) / max_power
-        conf_score = (s.get("confidence") or 0) / 100
         return (
-            0.30 * s["_avail"]
+            0.35 * s["_avail"]
             + 0.20 * price_score
             + 0.20 * dist_score
             + 0.15 * power_score
             + 0.10 * connector_match(s)
-            + 0.05 * conf_score
         )
 
     results: list[dict[str, Any]] = []
@@ -95,8 +93,6 @@ def build_recommendations(
             "currency": station.get("currency"),
             "max_power_kw": station.get("max_power_kw"),
             "connector_types": station.get("connector_types") or [],
-            "confidence": station.get("confidence"),
-            "confidence_label": station.get("confidence_label"),
             "pin_color": station.get("pin_color"),
             "reason": reason,
             "latitude": station["latitude"],
@@ -110,12 +106,12 @@ def build_recommendations(
             best,
             "best_overall",
             f"Best overall: {best['travel_minutes']} min away, {best.get('availability_label', 'unknown')}, "
-            f"{price_str}, {best.get('max_power_kw') or '?'} kW, {best.get('confidence_label', 'low').lower()} confidence.",
+            f"{price_str}, {best.get('max_power_kw') or '?'} kW.",
         )
 
     cheap_candidates = [
         s for s in nearby
-        if s.get("energy_price") is not None and s["_avail"] > 0 and (s.get("confidence") or 0) >= 25
+        if s.get("energy_price") is not None and s["_avail"] > 0
     ]
     if cheap_candidates:
         cheapest = min(cheap_candidates, key=lambda x: x["energy_price"])
@@ -128,19 +124,18 @@ def build_recommendations(
 
     fast_candidates = [
         s for s in nearby
-        if s["_avail"] == 1.0 and s.get("max_power_kw") and (s.get("confidence") or 0) >= 25
+        if s["_avail"] == 1.0 and s.get("max_power_kw")
     ]
     if fast_candidates:
         def safe_score(s: dict) -> float:
-            freshness = 1.0 if (s.get("confidence") or 0) >= 50 else 0.5
-            return (s.get("max_power_kw") or 0) * s["_avail"] * freshness * ((s.get("confidence") or 0) / 100)
+            return (s.get("max_power_kw") or 0) * s["_avail"]
 
         fastest = max(fast_candidates, key=safe_score)
         add_rec(
             fastest,
             "fastest",
             f"Fastest / safest bet: {fastest['travel_minutes']} min away, available, "
-            f"{fastest.get('max_power_kw')} kW, high confidence.",
+            f"{fastest.get('max_power_kw')} kW.",
         )
 
     return results[:3]

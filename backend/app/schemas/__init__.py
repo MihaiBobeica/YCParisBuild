@@ -16,8 +16,6 @@ class StationPin(BaseModel):
     connector_types: list[str] = []
     availability_label: str
     pin_color: str
-    confidence: int
-    confidence_label: str
     distance_km: float | None = None
 
 
@@ -32,8 +30,6 @@ class RecommendationCard(BaseModel):
     currency: str | None
     max_power_kw: float | None
     connector_types: list[str]
-    confidence: int | None
-    confidence_label: str | None
     pin_color: str | None
     reason: str
     latitude: float

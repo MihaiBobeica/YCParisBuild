@@ -9,7 +9,6 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models import Connector, Evse, Station, Tariff, TariffPriceComponent
-from app.services.confidence import compute_confidence
 from app.services.pin_status import aggregate_pin_color, availability_summary
 from app.services.ndw_parser import make_tariff_id
 from app.services.spatial import select_candidate_ids, select_map_pins
@@ -116,10 +115,8 @@ def _station_summary(
         (e.last_updated for e in station.evses if e.last_updated),
         default=station.last_updated,
     )
-    tariff_matched = bool(prices) or any(c.tariff_ids for c in connectors)
-    confidence, confidence_label = compute_confidence(statuses, energy_price is not None, last_updated, tariff_matched)
     has_partial = energy_price is None and bool(connectors)
-    pin_color = aggregate_pin_color(statuses, confidence, has_partial)
+    pin_color = aggregate_pin_color(statuses, has_partial)
 
     summary: dict[str, Any] = {
         "id": station.id,
@@ -139,8 +136,6 @@ def _station_summary(
         "currency": currency,
         "max_power_kw": max_power,
         "connector_types": standards,
-        "confidence": confidence,
-        "confidence_label": confidence_label,
         "pin_color": pin_color,
         "last_updated": last_updated.isoformat() if last_updated else None,
     }
@@ -261,8 +256,6 @@ async def fetch_stations_in_bbox(
         results = [r for r in results if r["energy_price"] is not None and r["energy_price"] <= filters["max_price"]]
     if filters.get("min_kw"):
         results = [r for r in results if r["max_power_kw"] and r["max_power_kw"] >= filters["min_kw"]]
-    if filters.get("min_confidence"):
-        results = [r for r in results if r["confidence"] >= filters["min_confidence"]]
 
     return select_map_pins(results, map_limit, min_lat, min_lon, max_lat, max_lon, zoom)
 

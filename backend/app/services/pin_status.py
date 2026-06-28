@@ -1,11 +1,11 @@
 BLOCKING = {"CHARGING", "RESERVED", "OUTOFORDER", "INOPERATIVE"}
 
 
-def aggregate_pin_color(statuses: list[str], confidence: int, has_partial_price: bool) -> str:
+def aggregate_pin_color(statuses: list[str], has_partial_price: bool) -> str:
     if not statuses or all(s == "UNKNOWN" or not s for s in statuses):
         return "gray"
     if any(s == "AVAILABLE" for s in statuses):
-        if confidence < 50 or has_partial_price:
+        if has_partial_price:
             return "orange"
         return "green"
     if all(s in BLOCKING for s in statuses if s):

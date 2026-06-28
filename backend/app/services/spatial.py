@@ -33,7 +33,7 @@ def _station_score(s: dict[str, Any]) -> tuple:
     color = s.get("pin_color", "gray")
     color_pri = {"green": 4, "red": 3, "orange": 2, "gray": 1}.get(color, 0)
     has_price = 1 if s.get("energy_price") is not None else 0
-    return (color_pri, has_price, s.get("confidence") or 0, s.get("id", ""))
+    return (color_pri, has_price, s.get("id", ""))
 
 
 def _cell_key(lat: float, lon: float, cell_size: float) -> tuple[int, int]:

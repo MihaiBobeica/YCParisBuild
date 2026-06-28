@@ -24,8 +24,6 @@ export interface StationPin {
   connector_types?: string[];
   availability_label: string;
   pin_color: string;
-  confidence: number;
-  confidence_label: string;
   distance_km?: number;
 }
 
@@ -40,8 +38,6 @@ export interface RecommendationCard {
   currency: string | null;
   max_power_kw: number | null;
   connector_types: string[];
-  confidence: number | null;
-  confidence_label: string | null;
   pin_color: string | null;
   reason: string;
   latitude: number;
@@ -84,7 +80,6 @@ export interface Filters {
   parking_type?: string;
   access_class?: string;
   known_price_only?: boolean;
-  min_confidence?: number;
   speed?: 'slow' | 'fast';
 }
 
