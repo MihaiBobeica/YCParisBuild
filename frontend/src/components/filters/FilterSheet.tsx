@@ -1,4 +1,5 @@
 import type { Filters } from '../../api/client';
+import { MenuSheet } from '../layout/MenuSheet';
 
 interface Props {
   filters: Filters;
@@ -8,20 +9,21 @@ interface Props {
 
 export function FilterSheet({ filters, onChange, onClose }: Props) {
   return (
-    <div className="sheet">
-      <div className="sheet-handle" />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2 style={{ margin: 0 }}>Filter</h2>
-        <button className="primary-pill" style={{ width: 'auto', padding: '10px 24px' }} onClick={onClose}>
+    <MenuSheet
+      title="Filter"
+      onClose={onClose}
+      headerAction={
+        <button type="button" className="menu-sheet-save" onClick={onClose}>
           Save
         </button>
-      </div>
-
-      <p style={{ fontWeight: 600, marginBottom: 8 }}>Price</p>
-      <div className="segmented" style={{ marginBottom: 20 }}>
+      }
+    >
+      <p className="filter-section-label">Price</p>
+      <div className="segmented filter-segmented">
         {['Free', '€', '€€', '€€€'].map((label, i) => (
           <button
             key={label}
+            type="button"
             className={filters.max_price === [0, 0.35, 0.55, 999][i] ? 'active' : ''}
             onClick={() =>
               onChange({
@@ -36,15 +38,17 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         ))}
       </div>
 
-      <p style={{ fontWeight: 600, marginBottom: 8 }}>Speed</p>
-      <div className="segmented" style={{ marginBottom: 20 }}>
+      <p className="filter-section-label">Speed</p>
+      <div className="segmented filter-segmented">
         <button
+          type="button"
           className={filters.speed !== 'fast' ? 'active' : ''}
           onClick={() => onChange({ ...filters, speed: 'slow', min_kw: undefined })}
         >
           Slow
         </button>
         <button
+          type="button"
           className={filters.speed === 'fast' ? 'active' : ''}
           onClick={() => onChange({ ...filters, speed: 'fast', min_kw: 50 })}
         >
@@ -52,20 +56,22 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         </button>
       </div>
 
-      <p style={{ fontWeight: 600, marginBottom: 8 }}>Connector type</p>
-      <p className="field-hint" style={{ marginBottom: 20 }}>
+      <p className="filter-section-label">Connector type</p>
+      <p className="field-hint filter-hint">
         Set your car&apos;s plug in Account — the map only shows compatible chargers.
       </p>
 
-      <p style={{ fontWeight: 600, marginTop: 20, marginBottom: 8 }}>Availability</p>
-      <div className="segmented" style={{ marginBottom: 20 }}>
+      <p className="filter-section-label filter-section-label--spaced">Availability</p>
+      <div className="segmented filter-segmented">
         <button
+          type="button"
           className={!filters.availability ? 'active' : ''}
           onClick={() => onChange({ ...filters, availability: undefined })}
         >
           All
         </button>
         <button
+          type="button"
           className={filters.availability === 'available' ? 'active' : ''}
           onClick={() => onChange({ ...filters, availability: 'available' })}
         >
@@ -73,7 +79,7 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
         </button>
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <label className="filter-checkbox">
         <input
           type="checkbox"
           checked={!!filters.known_price_only}
@@ -83,17 +89,11 @@ export function FilterSheet({ filters, onChange, onClose }: Props) {
       </label>
 
       <input
+        className="filter-operator-input"
         placeholder="Operator name"
         value={filters.operator || ''}
         onChange={(e) => onChange({ ...filters, operator: e.target.value || undefined })}
-        style={{
-          width: '100%',
-          padding: 12,
-          borderRadius: 12,
-          border: '1px solid #eee',
-          marginBottom: 12,
-        }}
       />
-    </div>
+    </MenuSheet>
   );
 }

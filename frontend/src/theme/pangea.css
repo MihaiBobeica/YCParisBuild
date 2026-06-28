@@ -16,6 +16,9 @@
   --pangea-shadow-float: 0 2px 12px rgba(0, 0, 0, 0.1);
   --pangea-shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.12);
   --pangea-font: 'Inter', system-ui, sans-serif;
+  --pangea-chrome-gap: 8px;
+  --pangea-chrome-padding-x: 12px;
+  --pangea-chrome-transition: 200ms ease;
 }
 
 * {
@@ -384,39 +387,62 @@ input {
 }
 
 .map-chrome-top,
+.map-chrome-bottom,
 .map-chrome-rec,
-.map-chrome-fab,
-.map-chrome-dock {
+.map-chrome-dock-wrap,
+.map-chrome-fab-row {
   pointer-events: none;
 }
 
 .map-chrome-top > *,
+.map-chrome-bottom > *,
 .map-chrome-rec > *,
-.map-chrome-fab > *,
-.map-chrome-dock > * {
+.map-chrome-dock-wrap > *,
+.map-chrome-fab-row > * {
   pointer-events: auto;
 }
 
 .map-chrome-top {
-  padding: 12px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) var(--pangea-chrome-padding-x) 0;
   flex-shrink: 0;
+}
+
+.map-chrome-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pangea-chrome-gap);
+  padding: 0 var(--pangea-chrome-padding-x) calc(12px + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
+  width: 100%;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--pangea-chrome-transition),
+    transform var(--pangea-chrome-transition);
+}
+
+.map-chrome-bottom--hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
 }
 
 .map-chrome-rec {
-  margin-top: auto;
-  padding: 0 12px 8px;
-  max-height: 38vh;
+  max-height: 32vh;
+  width: 100%;
 }
 
-.map-chrome-fab {
-  position: absolute;
-  right: 12px;
-  bottom: 200px;
+.map-chrome-dock-wrap {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
-.map-chrome-dock {
-  padding: 0 12px 12px;
-  flex-shrink: 0;
+.map-chrome-fab-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--pangea-chrome-gap);
 }
 
 .map-zoom-controls {
@@ -447,6 +473,7 @@ input {
 /* ── Bottom dock (Pangea-style) ── */
 .bottom-dock {
   position: relative;
+  width: 100%;
   background: white;
   border-radius: 28px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.14);
@@ -454,18 +481,30 @@ input {
 }
 
 .dock-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
   align-items: center;
-  justify-content: space-between;
   margin-bottom: 12px;
 }
 
+.dock-header .dock-icon-btn:first-child {
+  grid-column: 1;
+  justify-self: start;
+}
+
 .dock-logo {
+  grid-column: 2;
+  text-align: center;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.5px;
   text-transform: lowercase;
+}
+
+.dock-header .dock-icon-btn:last-child {
+  grid-column: 3;
+  justify-self: end;
 }
 
 .dock-icon-btn {
@@ -548,7 +587,121 @@ input {
   color: var(--pangea-primary-text);
 }
 
-/* ── Search / account sheets ── */
+/* ── Menu sheets (Search / Account / Filter) ── */
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.menu-sheet-overlay {
+  animation: overlay-fade-in 200ms ease forwards;
+}
+
+.menu-sheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 28px 28px 0 0;
+  padding: 12px 20px calc(32px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--pangea-shadow-sheet);
+  animation: sheet-slide-up 250ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.menu-sheet-header {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.menu-sheet-close {
+  grid-column: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--pangea-bg-muted);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.menu-sheet-title {
+  grid-column: 2;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.menu-sheet-action {
+  grid-column: 3;
+  justify-self: end;
+}
+
+.menu-sheet-save {
+  background: var(--pangea-primary);
+  color: var(--pangea-primary-text);
+  border: none;
+  border-radius: var(--pangea-radius-pill);
+  padding: 10px 24px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.filter-section-label {
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.filter-section-label--spaced {
+  margin-top: 20px;
+}
+
+.filter-segmented {
+  margin-bottom: 20px;
+}
+
+.filter-hint {
+  margin-bottom: 20px;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filter-operator-input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  margin-bottom: 12px;
+  font-family: inherit;
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-sheet-overlay,
+  .menu-sheet {
+    animation: none;
+  }
+
+  .map-chrome-bottom {
+    transition: none;
+  }
+}
+
+/* ── Search / account sheets (legacy classes kept for compatibility) ── */
 .sheet-overlay {
   position: fixed;
   inset: 0;
@@ -897,10 +1050,6 @@ input {
   height: 100%;
 }
 
-.map-chrome--mobile {
-  display: block;
-}
-
 /* ── Desktop (1024px+): map + sidebar ── */
 @media (min-width: 1024px) {
   .app-shell {
@@ -934,16 +1083,13 @@ input {
   }
 
   .sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
+    padding: 14px 16px;
     border-bottom: 1px solid #eee;
   }
 
-  .sidebar-header-actions {
-    display: flex;
-    gap: 8px;
+  .sidebar-header .dock-header {
+    margin-bottom: 0;
+    width: 100%;
   }
 
   .sidebar-search {
@@ -1050,6 +1196,12 @@ input {
     align-items: center;
   }
 
+  .menu-sheet {
+    border-radius: 28px;
+    margin-bottom: 24px;
+    max-height: 80vh;
+  }
+
   .search-sheet,
   .account-sheet {
     border-radius: 28px;
@@ -1060,29 +1212,14 @@ input {
 
 /* ── Tablet / small desktop tweaks ── */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .map-chrome-dock {
-    display: flex;
-    justify-content: center;
-  }
-
-  .bottom-dock {
-    width: 100%;
-    max-width: 480px;
-  }
-
-  .map-chrome-fab {
-    bottom: 210px;
+  :root {
+    --pangea-chrome-padding-x: 16px;
   }
 }
 
 @media (max-width: 767px) {
-  .map-chrome-fab {
-    bottom: 200px;
-    right: 12px;
-  }
-
   .map-chrome-rec {
-    padding: 0 8px 8px;
+    padding: 0;
   }
 
   .bottom-dock {

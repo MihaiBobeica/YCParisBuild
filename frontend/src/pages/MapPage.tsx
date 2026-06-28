@@ -158,7 +158,8 @@ export function MapPage() {
   const filterCount = countActiveFilters(extraFilters);
   const connectorLabel =
     CONNECTOR_OPTIONS.find((o) => o.id === profile.connectorType)?.label ?? 'CCS';
-  const chromeHidden = detailOpen || showSearch || showAccount || showFilters;
+  const menuOpen = showSearch || showAccount || showFilters;
+  const chromeBottomHidden = menuOpen || detailOpen;
 
   return (
     <div className="app-shell">
@@ -174,16 +175,16 @@ export function MapPage() {
 
         {loading && <div className="map-loading-bar" aria-hidden />}
 
-        {!chromeHidden && (
-          <div className="map-chrome map-chrome--mobile">
-            <div className="map-chrome-top">
-              <div className="map-legend">
-                <span><i className="legend-dot green" /> Available</span>
-                <span><i className="legend-dot red" /> Unavailable</span>
-                <span><i className="legend-dot orange" /> Unknown</span>
-              </div>
+        <div className="map-chrome map-chrome--mobile">
+          <div className="map-chrome-top">
+            <div className="map-legend">
+              <span><i className="legend-dot green" /> Available</span>
+              <span><i className="legend-dot red" /> Unavailable</span>
+              <span><i className="legend-dot orange" /> Unknown</span>
             </div>
+          </div>
 
+          <div className={`map-chrome-bottom${chromeBottomHidden ? ' map-chrome-bottom--hidden' : ''}`}>
             {recommendations.length > 0 && (
               <div className="map-chrome-rec">
                 <p className="mobile-rec-title">
@@ -193,13 +194,12 @@ export function MapPage() {
               </div>
             )}
 
-            <div className="map-chrome-fab">
-              <button type="button" className="icon-btn" onClick={requestLocation} title="Locate me">
-                ◎
-              </button>
-            </div>
-
-            <div className="map-chrome-dock">
+            <div className="map-chrome-dock-wrap">
+              <div className="map-chrome-fab-row">
+                <button type="button" className="icon-btn" onClick={requestLocation} title="Locate me">
+                  ◎
+                </button>
+              </div>
               <BottomDock
                 searchLabel={searchLabel}
                 connectorLabel={connectorLabel}
@@ -212,7 +212,7 @@ export function MapPage() {
               />
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {!detailOpen && (
